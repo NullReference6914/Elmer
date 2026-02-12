@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    runs-on: window-latest # Uses a GitHub-hosted runner with Ubuntu
+    runs-on: windows-latest # Uses a GitHub-hosted runner with Ubuntu
 
     steps:
     - name: Checkout repository
