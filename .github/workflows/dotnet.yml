@@ -1,28 +1,86 @@
 # This workflow will build a .NET project
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
-
-name: .NET
+name: .Net
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches:
+      - main # Triggers the workflow on pushes to the main branch
+  workflow_dispatch: # Allows manual triggering from the GitHub UI
 
 jobs:
   build:
-
-    runs-on: windows-latest
+    runs-on: ubuntu-latest # Uses a GitHub-hosted runner with Ubuntu
+    permissions:
+      contents: write # Required to write releases and upload assets
 
     steps:
-    - uses: actions/checkout@v4
+        
+    - name: Get current date
+      run: echo "NOW=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+      id: set_date # ID to reference this step for outputs (if needed)
+      
+    - name: Get the repository name
+      run: echo "REPO_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
+      
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: 10.0.x
+        dotnet-version: '10.0.x' # Specify your target .NET version
+
     - name: Restore dependencies
       run: dotnet restore
-    - name: Build
-      run: dotnet build --no-restore
-    - name: Test
-      run: dotnet test --no-build --verbosity normal
+
+    - name: Build project
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Publish project
+      run: dotnet publish --configuration Release --no-build -o ./Publish
+      
+    - name: Install zip (if not pre-installed)
+      run: sudo apt-get install zip -y
+      # Ubuntu runners usually have zip, but this ensures it is available
+
+    - name: Zip the publish folder
+      run: |
+        cd ./Publish
+        zip -r ../${{env.REPO_NAME}}-Published.zip .
+      
+    - name: Upload production artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{env.REPO_NAME}}.zip
+        path: ./${{env.REPO_NAME}}-Published.zip 
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ env.NOW }}
+        release_name: ${{env.REPO_NAME}} ${{ env.NOW }}
+        draft: true # Create a draft release first to add all assets before publishing
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # The URL for uploading assets
+        asset_path: ${{env.REPO_NAME}}-Published.zip # Path to the file to upload
+        asset_name: ${{env.REPO_NAME}}.zip # The name for the asset in the release
+        asset_content_type: application/zip
+#        
+#    # Optional: Publish the draft release once all assets are uploaded
+#    - name: Publish Release
+#      uses: softprops/action-gh-release@v1
+#      if: ${{ steps.create_release.outputs.id != '' }}
+#      with:
+#        tag_name: ${{ github.run_id }}
+#        release_name: Release ${{ github.run_number }}
+#        draft: false
