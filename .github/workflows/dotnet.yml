@@ -30,13 +30,7 @@ jobs:
       run: dotnet build --configuration Release --no-restore
 
     - name: Publish project
-      run: dotnet publish --configuration Release --no-build --output ./publish_output
-
-    - name: Upload production artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: published-app
-        path: ./publish_output
+      run: dotnet publish --configuration Release --no-build 
 
     - name: Create Release
       id: create_release
@@ -56,7 +50,7 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # The URL for uploading assets
         asset_path: ./publish_output # Path to the file to upload
-        asset_name: publish_output.zip # The name for the asset in the release
+        asset_name: publish_output # The name for the asset in the release
         asset_content_type: application/zip
         
     # Optional: Publish the draft release once all assets are uploaded
