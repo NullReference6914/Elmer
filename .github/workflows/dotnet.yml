@@ -39,7 +39,7 @@ jobs:
     - name: Zip the publish folder
       run: |
         cd ./Publish
-        zip -r Elmer-Published.zip .
+        zip -r ./Elmer-Published.zip .
       # This command zips the 'myapp' directory into 'app-archive.zip'
       
     - name: Upload production artifact
