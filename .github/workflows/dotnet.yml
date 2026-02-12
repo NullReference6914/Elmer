@@ -52,8 +52,8 @@ jobs:
     - name: Upload production artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{github.repo_name}}.zip
-        path: ./${{github.repo_name}}-Published.zip 
+        name: ${{env.repo_name}}.zip
+        path: ./${{env.repo_name}}-Published.zip 
 
     - name: Create Release
       id: create_release
@@ -62,7 +62,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ env.NOW }}
-        release_name: ${{github.repo_name}} ${{ env.NOW }}
+        release_name: ${{env.repo_name}} ${{ env.NOW }}
         draft: true # Create a draft release first to add all assets before publishing
         prerelease: false
 
@@ -72,8 +72,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # The URL for uploading assets
-        asset_path: ${{github.repo_name}}-Published.zip # Path to the file to upload
-        asset_name: ${{github.repo_name}}.zip # The name for the asset in the release
+        asset_path: ${{env.repo_name}}-Published.zip # Path to the file to upload
+        asset_name: ${{env.repo_name}}.zip # The name for the asset in the release
         asset_content_type: application/zip
 #        
 #    # Optional: Publish the draft release once all assets are uploaded
