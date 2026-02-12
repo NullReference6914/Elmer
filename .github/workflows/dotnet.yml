@@ -66,4 +66,6 @@ jobs:
       uses: softprops/action-gh-release@v1
       if: ${{ steps.create_release.outputs.id != '' }}
       with:
+        tag_name: ${{ github.run_id }}
+        release_name: Release ${{ github.run_number }}
         draft: false
