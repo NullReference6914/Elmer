@@ -49,8 +49,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # The URL for uploading assets
-        asset_path: ./publish_output # Path to the file to upload
-        asset_name: publish_output # The name for the asset in the release
+        asset_path: ./bin/Release/net10.0/publish/ # Path to the file to upload
+        asset_name: Elmer.core10 # The name for the asset in the release
         asset_content_type: application/zip
         
     # Optional: Publish the draft release once all assets are uploaded
