@@ -46,7 +46,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: Live
+        tag_name: ${{ github.run_id }}
         release_name: Release ${{ github.run_number }}
         draft: true # Create a draft release first to add all assets before publishing
         prerelease: false
@@ -66,4 +66,5 @@ jobs:
       uses: softprops/action-gh-release@v1
       if: ${{ steps.create_release.outputs.id != '' }}
       with:
+        tag_name: ${{ github.run_id }}
         draft: false
