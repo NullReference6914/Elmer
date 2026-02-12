@@ -33,5 +33,33 @@ jobs:
     - name: Upload production artifact
       uses: actions/upload-artifact@v4
       with:
-        name: published-app
+        name: published-app.zip
         path: ./publish_output
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: true # Create a draft release first to add all assets before publishing
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # The URL for uploading assets
+        asset_path: ./publish_output # Path to the file to upload
+        asset_name: publish_output.zip # The name for the asset in the release
+        asset_content_type: application/zip
+        
+    # Optional: Publish the draft release once all assets are uploaded
+    - name: Publish Release
+      uses: softprops/action-gh-release@v1
+      if: ${{ steps.create_release.outputs.id != '' }}
+      with:
+        draft: false
