@@ -47,7 +47,7 @@ jobs:
     - name: Zip the publish folder
       run: |
         cd ./Publish
-        zip -r ../Elmer-Published.zip .
+        zip -r ../${{env.repo_name}}-Published.zip .
       
     - name: Upload production artifact
       uses: actions/upload-artifact@v4
