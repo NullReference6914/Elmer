@@ -15,6 +15,14 @@ jobs:
       contents: write # Required to write releases and upload assets
 
     steps:
+        
+    - name: Get current date
+      run: echo "NOW=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+      id: set_date # ID to reference this step for outputs (if needed)
+      
+    - name: Get the repository name
+      run: echo "REPO_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
+      
     - name: Checkout repository
       uses: actions/checkout@v4
 
@@ -44,12 +52,8 @@ jobs:
     - name: Upload production artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Elmer.zip
-        path: ./Elmer-Published.zip 
-        
-    - name: Set current date as environment variable
-      run: echo "NOW=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
-      id: set_date # ID to reference this step for outputs (if needed)
+        name: ${{github.repo_name}}.zip
+        path: ./${{github.repo_name}}-Published.zip 
 
     - name: Create Release
       id: create_release
@@ -57,8 +61,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.run_id }}
-        release_name: Elmer ${{ env.NOW }}
+        tag_name: ${{ env.NOW }}
+        release_name: ${{github.repo_name}} ${{ env.NOW }}
         draft: true # Create a draft release first to add all assets before publishing
         prerelease: false
 
@@ -68,8 +72,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # The URL for uploading assets
-        asset_path: Elmer-Published.zip # Path to the file to upload
-        asset_name: Elmer.zip # The name for the asset in the release
+        asset_path: ${{github.repo_name}}-Published.zip # Path to the file to upload
+        asset_name: ${{github.repo_name}}.zip # The name for the asset in the release
         asset_content_type: application/zip
 #        
 #    # Optional: Publish the draft release once all assets are uploaded
