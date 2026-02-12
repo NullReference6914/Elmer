@@ -26,3 +26,41 @@ jobs:
       run: dotnet build --no-restore
     - name: Test
       run: dotnet test --no-build --verbosity normal
+
+
+
+name: .Net
+
+on:
+  push:
+    branches:
+      - main # Triggers the workflow on pushes to the main branch
+  workflow_dispatch: # Allows manual triggering from the GitHub UI
+
+jobs:
+  build:
+    runs-on: window-latest # Uses a GitHub-hosted runner with Ubuntu
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x' # Specify your target .NET version
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build project
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Publish project
+      run: dotnet publish --configuration Release --no-build --output ./publish_output
+
+    - name: Upload production artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: published-app
+        path: ./publish_output
