@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest # Uses a GitHub-hosted runner with Ubuntu
+    permissions:
+      contents: write # Required to write releases and upload assets
 
     steps:
     - name: Checkout repository
@@ -33,7 +35,7 @@ jobs:
     - name: Upload production artifact
       uses: actions/upload-artifact@v4
       with:
-        name: published-app.zip
+        name: published-app
         path: ./publish_output
 
     - name: Create Release
