@@ -37,7 +37,7 @@ jobs:
       # Ubuntu runners usually have zip, but this ensures it is available
 
     - name: Zip the publish folder
-      run: zip -r Elmer-Published.zip ./Publish/
+      run: zip -r Elmer-Published.zip ./Publish/*
       # This command zips the 'myapp' directory into 'app-archive.zip'
 
     - name: Create Release
@@ -66,5 +66,4 @@ jobs:
       uses: softprops/action-gh-release@v1
       if: ${{ steps.create_release.outputs.id != '' }}
       with:
-        tag_name: ${{ github.run_id }}
         draft: false
