@@ -15,6 +15,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Properties\**" />
+    <EmbeddedResource Remove="Properties\**" />
+    <None Remove="Properties\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="DSharpPlus" Version="5.0.0-nightly-02515" />
     <PackageReference Include="DSharpPlus.Commands" Version="5.0.0-nightly-02515" />
     <PackageReference Include="DSharpPlus.Interactivity" Version="5.0.0-nightly-02515" />
