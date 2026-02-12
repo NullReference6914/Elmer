@@ -10,7 +10,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest # Uses a GitHub-hosted runner with Ubuntu
+    runs-on: ubuntu-latest # Uses a GitHub-hosted runner with Ubuntu
     permissions:
       contents: write # Required to write releases and upload assets
 
@@ -31,6 +31,14 @@ jobs:
 
     - name: Publish project
       run: dotnet publish --configuration Release --no-build 
+      
+    - name: Install zip (if not pre-installed)
+      run: sudo apt-get install zip -y
+      # Ubuntu runners usually have zip, but this ensures it is available
+
+    - name: Zip the publish folder
+      run: zip -r Elmer-Published.zip ${{env.DOTNET_ROOT}}/bin/Release/net10.0/publish
+      # This command zips the 'myapp' directory into 'app-archive.zip'
 
     - name: Create Release
       id: create_release
@@ -49,8 +57,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # The URL for uploading assets
-        asset_path: ./bin/Release/net10.0/publish/ # Path to the file to upload
-        asset_name: Elmer.core10 # The name for the asset in the release
+        asset_path: Elmer-Published.zip # Path to the file to upload
+        asset_name: Elmer-Complied # The name for the asset in the release
         asset_content_type: application/zip
         
     # Optional: Publish the draft release once all assets are uploaded
