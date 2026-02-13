@@ -28,6 +28,7 @@ namespace ElmerBot.Commands
             int type
         ) => await repo.GetMembers(ctx, primaryRole, (MemberOutputType)type);
 
+        [Command("server")]
         [RequireAdmin]
         internal class Server_Commands(IAdmin_Repository repo)
         {
