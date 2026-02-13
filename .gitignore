@@ -6,6 +6,9 @@
 /bin/Debug/net9.0
 /obj
 /token.txt
+<<<<<<< HEAD
 /token.txt
 /bin
 /settings.json
+=======
+>>>>>>> 20e7135c987ecba3cbb9058a264482e9825178ff
