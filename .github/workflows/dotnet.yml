@@ -43,7 +43,7 @@ jobs:
       run: dotnet publish --configuration Release --no-build -o ./Publish
       
     - name: Publish project (Win EXE)
-      run: dotnet publish --configuration Release --no-build -r win-x64 -o ./PublishWin
+      run: dotnet publish --configuration Release --no-build -r win-x64 -o ./PublishWin --self-contained true /p:PublishSingleFile=true
       
     - name: Install zip (if not pre-installed)
       run: sudo apt-get install zip -y
