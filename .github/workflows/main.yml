@@ -1,0 +1,30 @@
+# This workflow will build a .NET project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
+name: Version Numbering Test
+
+on:
+  workflow_dispatch: # Allows manual triggering from the GitHub UI
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # Uses a GitHub-hosted runner with Ubuntu
+    permissions:
+      contents: write # Required to write releases and upload assets
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get next version
+        uses: reecetech/version-increment@2024.10.1
+        id: version
+        with:
+          scheme: semver
+          increment: patch
+
+      - name: Build image
+        uses: docker/build-push-action@v2
+        with:
+          push: false
+          tags: "example/application:${{ steps.version.outputs.version }}"
+          context: .
