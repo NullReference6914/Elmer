@@ -106,16 +106,18 @@ namespace ElmerBot.Repositories
                 {
                     await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The provided channel is invalid.").AsEphemeral());
                 }
-                else if (msgs
-                    .FirstOrDefault(m =>
-                        m.Value.Channel_ID == channelId
-                        && m.Value.Server_ID == ctx.Guild!.Id
-                    ).Value is GluedMessage msg && msg.Channel_ID != 0)
+                else if (msgs.TryGetValue($"{ctx.Guild!.Id}_{channelId}", out var msg))
                 {
-                    msg.Message = message;
-                    needSave = true;
-
-                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The message content has been updated.").AsEphemeral());
+                    if(msgs.TryUpdate($"{ctx.Guild!.Id}_{channelId}", new GluedMessage(msg) { Message = message }, msg))
+                    {
+                        needSave = true;
+                        await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The message content has been updated.").AsEphemeral());
+                    }
+                    else
+                    {
+                        await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occured during the saving of the message. Please try again.").AsEphemeral());
+                    }
+                        
                 }
                 else
                 {
@@ -144,19 +146,14 @@ namespace ElmerBot.Repositories
         {
             try
             {
-                if (msgs
-                    .FirstOrDefault(m =>
-                        m.Value.Channel_ID == channelId
-                        && m.Value.Server_ID == ctx.Guild!.Id
-                    ).Value is GluedMessage msg && msg.Channel_ID != 0)
+                if (msgs.Remove($"{ctx.Guild!.Id}_{channelId}", out GluedMessage msg))
                 {
-                    msgs.Remove($"{ctx.Guild!.Id}_{channelId}", out _); 
                     needSave = true;
 
                     try
                     {
                         if (msg.Message_ID > 0)
-                            if (await ctx.Channel.GetMessageAsync(msg.Message_ID) is DiscordMessage discordMsg)
+                            if (await ctx.Channel.GetMessageAsync(msg.Message_ID.Value) is DiscordMessage discordMsg)
                                 if (discordMsg is not null)
                                     await ctx.Channel.DeleteMessageAsync(discordMsg);
                     }
@@ -186,136 +183,135 @@ namespace ElmerBot.Repositories
         public async Task ProcessGuildAvailable(DiscordClient c, DiscordGuild guild) 
         {
             _ = logger.LogBasic("Processing Guild Available", $"Server: {guild.Name} ({guild.Id})");
-            List<GluedMessage> serverMsgs = msgs
-                .Where(m => m.Value.Server_ID == guild.Id && m.Value.isWatching == false)
-                .Select(m => m.Value)
-                .ToList();
 
-            foreach (GluedMessage msg in serverMsgs)
-            {
-                DiscordChannel? chnl = null;
-                try { chnl = await guild.GetChannelAsync(msg.Channel_ID); }
-                catch 
-                {  
-                    if(msg.Channel_Errors < 10)
-                    {
-                        msg.Channel_Errors++;
-                        _ = logger.LogError($"Failed to access channel for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
-                    }
-                    else
-                    {
-                        msgs.Remove($"{msg.Server_ID}_{msg.Channel_ID}", out _);
-                        _ = logger.LogError($"Failed to access channel for glued message after multiple attempts. Removing glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+            foreach (var key in msgs.Keys.Where(k => k.StartsWith($"{guild.Id}_")))
+                if(msgs.TryGetValue(key, out var msg))
+                {
+                    DiscordChannel? chnl = null;
+                    try { chnl = await guild.GetChannelAsync(msg.Channel_ID); }
+                    catch 
+                    {  
+                        if(msg.Channel_Errors < 10)
+                        {
+                            msgs.TryUpdate(key, new GluedMessage(msg) { Channel_Errors = msg.Channel_Errors + 1 }, msg);
+                            _ = logger.LogError($"Failed to access channel for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                        }
+                        else
+                        {
+                            msgs.Remove($"{msg.Server_ID}_{msg.Channel_ID}", out _);
+                            _ = logger.LogError($"Failed to access channel for glued message after multiple attempts. Removing glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                        }
+
+                        needSave = true;
                     }
 
-                    needSave = true;
+                    if (chnl is not null)
+                        _ = ProcessMessageCreated(c, guild, chnl);
                 }
-
-                if (chnl is not null)
-                    _ = ProcessMessageCreated(c, guild, chnl);
-            }
         }
 
         public async Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null)
         {
             try
             {
-                GluedMessage? msg = null;
-
-                if (msgs.ContainsKey($"{guild.Id}_{channel.Id}"))
-                    if (!msgs[$"{guild.Id}_{channel.Id}"].isWatching)
-                        msg = msgs[$"{guild.Id}_{channel.Id}"];
-
-                if (!(msg?.isWatching ?? true))
-                    if (
-                        (settings.EnabledServers.Contains(guild.Id) || settings.Admin.ServerID == guild.Id)
-                        && m?.Id != msg?.Message_ID
-
-                    )
-                    {
-                        msg!.isWatching = true;
-                        await Task.Delay(5 * 1000);
-
-                        if (msgs.ContainsKey($"{msg.Server_ID}_{msg.Channel_ID}"))
+                string msgKey = $"{guild.Id}_{channel.Id}";
+                if (settings.EnabledServers.Contains(guild.Id) || settings.Admin.ServerID == guild.Id)
+                    if (msgs.TryGetValue(msgKey, out var message))
+                        if ((m is null || m.Id != message.Message_ID) && !message.isWatching)
                         {
-                            try
-                            {
-                                if (msg.Message_ID > 0)
-                                    if (await channel.GetMessageAsync(msg.Message_ID) is DiscordMessage discordMsg)
-                                        if (discordMsg is not null)
-                                            await channel.DeleteMessageAsync(discordMsg);
-                            }
-                            catch { }
+                            _ = logger.LogBasic("Processing Glued Message", $"Server: {guild.Name} ({guild.Id}) - Channel: #{channel.Name} ({channel.Id})");
 
-                            DiscordWebhook? hook = null;
-                            bool childChannel = channel.Parent is not null && channel.Parent?.Type != DiscordChannelType.Category;
-                            try
-                            {
-                                List<DiscordWebhook>? hooks = [];
-
-                                if (childChannel)
-                                {
-                                    var list = await channel.Parent!.GetWebhooksAsync();
-                                    hooks = list?.ToList();
-                                }
-                                else
-                                {
-                                    var list = await channel.GetWebhooksAsync();
-                                    hooks = list?.ToList();
-                                }
-
-                                if (hooks?.Count > 0)
-                                    hook = hooks.FirstOrDefault(h => h.Name == "Elmers Hook" && h.User.Id == c.CurrentUser.Id);
-                            }
-                            catch { }
-
-                            if (hook is null)
-                                try
-                                {
-                                    hook = await ((childChannel)
-                                        ? channel.Parent!.CreateWebhookAsync("Elmers Hook")
-                                        : channel.CreateWebhookAsync("Elmers Hook"));
-                                }
-                                catch 
-                                {
-                                    if (msg.Webhook_Errors < 10)
-                                    {
-                                        msg.Webhook_Errors++;
-                                        _ = logger.LogError($"Failed to generate a webhook for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
-                                    }
-                                    else
-                                    {
-                                        msgs.Remove($"{msg.Server_ID}_{msg.Channel_ID}", out _);
-                                        _ = logger.LogError($"Failed to generate a webhook for glued message after multiple attempts. Removing glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
-                                    }
-                                }
-
-                            if (hook is not null)
-                                try
-                                {
-                                    DiscordWebhookBuilder builder = new()
-                                    {
-                                        Content = msg.Message,
-                                        AvatarUrl = msg.Avatar_Url ?? guild.IconUrl,
-                                        Username = msg.Username ?? guild.Name,
-                                        ThreadId = (childChannel) ? msg.Channel_ID : null
-                                    };
-                                    DiscordMessage hookMsg = await hook.ExecuteAsync(builder);
-                                    msg.Message_ID = hookMsg.Id;
-
-                                    _ = logger.LogBasic("Hook Submitted", $"Server: {channel.Guild.Name} ({channel.Guild.Id}) - #{channel.Name} ({channel.Id})");
-
-                                    msg.Channel_Errors = 0;
-                                    msg.Webhook_Errors = 0;
-                                }
-                                catch(Exception ex)
-                                {
-                                    _ = logger.LogError("Error during webhook submission", guild, ex);
-                                }
-                            msg.isWatching = false;
+                            msgs.TryUpdate(msgKey, new GluedMessage(message) { isWatching = true }, message);
                             needSave = true;
+
+                            await Task.Delay(5 * 1000);
+
+                            if (msgs.TryGetValue(msgKey, out var msg))
+                                try
+                                {
+                                    try
+                                    {
+                                        if (msg.Message_ID > 0)
+                                            if (await channel.GetMessageAsync(msg.Message_ID.Value) is DiscordMessage discordMsg)
+                                                if (discordMsg is not null)
+                                                    await channel.DeleteMessageAsync(discordMsg);
+                                    }
+                                    catch { }
+
+                                    DiscordWebhook? hook = null;
+                                    bool childChannel = channel.Parent is not null && channel.Parent?.Type != DiscordChannelType.Category;
+                                    try
+                                    {
+                                        List<DiscordWebhook>? hooks = [];
+
+                                        if (childChannel)
+                                        {
+                                            var list = await channel.Parent!.GetWebhooksAsync();
+                                            hooks = list?.ToList();
+                                        }
+                                        else
+                                        {
+                                            var list = await channel.GetWebhooksAsync();
+                                            hooks = list?.ToList();
+                                        }
+
+                                        if (hooks?.Count > 0)
+                                            hook = hooks.FirstOrDefault(h => h.Name == "Elmers Hook" && h.User.Id == c.CurrentUser.Id);
+                                    }
+                                    catch { }
+
+                                    if (hook is null)
+                                        try
+                                        {
+                                            hook = await ((childChannel)
+                                                ? channel.Parent!.CreateWebhookAsync("Elmers Hook")
+                                                : channel.CreateWebhookAsync("Elmers Hook"));
+                                        }
+                                        catch
+                                        {
+                                            if (msg.Webhook_Errors < 10)
+                                            {
+                                                msgs.TryUpdate(msgKey, new GluedMessage(msg) { Webhook_Errors = msg.Webhook_Errors + 1 }, msg);
+                                                _ = logger.LogError($"Failed to generate a webhook for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                                            }
+                                            else
+                                            {
+                                                msgs.Remove($"{msg.Server_ID}_{msg.Channel_ID}", out _);
+                                                _ = logger.LogError($"Failed to generate a webhook for glued message after multiple attempts. Removing glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                                            }
+                                        }
+
+                                    if (hook is not null)
+                                        try
+                                        {
+                                            DiscordWebhookBuilder builder = new()
+                                            {
+                                                Content = msg.Message,
+                                                AvatarUrl = msg.Avatar_Url ?? guild.IconUrl,
+                                                Username = msg.Username ?? guild.Name,
+                                                ThreadId = (childChannel) ? msg.Channel_ID : null
+                                            };
+                                            DiscordMessage hookMsg = await hook.ExecuteAsync(builder);
+                                            msg.Message_ID = hookMsg.Id;
+
+                                            _ = logger.LogBasic("Hook Submitted", $"Server: {channel.Guild.Name} ({channel.Guild.Id}) - #{channel.Name} ({channel.Id})");
+
+                                            msgs.TryUpdate(msgKey, new GluedMessage(msg) { Channel_Errors = 0 }, msg);
+                                            msgs.TryUpdate(msgKey, new GluedMessage(msg) { Webhook_Errors = 0 }, msg);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            _ = logger.LogError($"Error during webhook submission. Server: {guild.Name} ({guild.Id}) - Channel: #{channel.Name} ({channel.Id})", guild, ex);
+                                        }
+
+                                    msgs.TryUpdate(msgKey, new GluedMessage(msg) { isWatching = false }, msg);
+                                    needSave = true;
+                                }
+                                catch (Exception ex)
+                                {
+                                    _ = logger.LogError($"Error during processing of glued message. Server: {guild.Name} ({guild.Id}) - Channel: #{channel.Name} ({channel.Id})", guild, ex);
+                                }
                         }
-                    }
             }
             catch (Exception ex)
             {
