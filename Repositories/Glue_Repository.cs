@@ -292,12 +292,13 @@ namespace ElmerBot.Repositories
                                                 ThreadId = (childChannel) ? msg.Channel_ID : null
                                             };
                                             DiscordMessage hookMsg = await hook.ExecuteAsync(builder);
-                                            msg.Message_ID = hookMsg.Id;
+                                            msgs.TryUpdate(msgKey, new GluedMessage(msg) { 
+                                                Message_ID = hookMsg.Id,
+                                                Channel_Errors = 0,
+                                                Webhook_Errors = 0 
+                                            }, msg);
 
                                             _ = logger.LogBasic("Hook Submitted", $"Server: {channel.Guild.Name} ({channel.Guild.Id}) - #{channel.Name} ({channel.Id})");
-
-                                            msgs.TryUpdate(msgKey, new GluedMessage(msg) { Channel_Errors = 0 }, msg);
-                                            msgs.TryUpdate(msgKey, new GluedMessage(msg) { Webhook_Errors = 0 }, msg);
                                         }
                                         catch (Exception ex)
                                         {
