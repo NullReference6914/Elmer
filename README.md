@@ -33,6 +33,6 @@ When you first run the bot, it will create a settings.json file. This file shoul
 ```
 ` Token ` - Set to your token from Discord Developer Portal<br />
 ` Admin.ServerID ` - Set to your primary server's id<br />
-` Admin.ChannelID ` - Set to the channel for error output
-` Admin.UserID ` - Set to your User ID
+` Admin.ChannelID ` - Set to the channel for error output<br />
+` Admin.UserID ` - Set to your User ID<br />
 ` EnabledServers ` - You can manually add server ids here, otherwise the bot will add and update. There is no need to add the admin server id.
