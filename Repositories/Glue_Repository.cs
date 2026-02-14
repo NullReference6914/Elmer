@@ -4,6 +4,7 @@ using DSharpPlus.Entities;
 using ElmerBot.Models;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace ElmerBot.Repositories
@@ -18,7 +19,7 @@ namespace ElmerBot.Repositories
 
         Task ProcessMessageCreated(DiscordClient c, DSharpPlus.EventArgs.MessageCreatedEventArgs e);
         Task ProcessGuildAvailable(DiscordClient c, DiscordGuild guild);
-        Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null);
+        Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null, bool startup = false);
     }
     internal class Glue_Repository(IOptionsSnapshot<Settings> _config, ILogging_Repository logger) : IGlue_Repository
     {
@@ -193,7 +194,8 @@ namespace ElmerBot.Repositories
                     {  
                         if(msg.Channel_Errors < 10)
                         {
-                            msgs.TryUpdate(key, new GluedMessage(msg) { Channel_Errors = msg.Channel_Errors + 1 }, msg);
+                            if(msgs.TryGetValue(key, out var gluedMessage))
+                                msgs.TryUpdate(key, new GluedMessage(gluedMessage) { Channel_Errors = msg.Channel_Errors + 1 }, gluedMessage);
                             _ = logger.LogError($"Failed to access channel for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
                         }
                         else
@@ -206,11 +208,11 @@ namespace ElmerBot.Repositories
                     }
 
                     if (chnl is not null)
-                        _ = ProcessMessageCreated(c, guild, chnl);
+                        _ = ProcessMessageCreated(c, guild, chnl, startup:true);
                 }
         }
 
-        public async Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null)
+        public async Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null, bool startup = false)
         {
             try
             {
@@ -224,7 +226,8 @@ namespace ElmerBot.Repositories
                             msgs.TryUpdate(msgKey, new GluedMessage(message) { isWatching = true }, message);
                             needSave = true;
 
-                            await Task.Delay(5 * 1000);
+                            if(!startup)
+                                await Task.Delay(5 * 1000);
 
                             if (msgs.TryGetValue(msgKey, out var msg))
                                 try
@@ -271,7 +274,8 @@ namespace ElmerBot.Repositories
                                         {
                                             if (msg.Webhook_Errors < 10)
                                             {
-                                                msgs.TryUpdate(msgKey, new GluedMessage(msg) { Webhook_Errors = msg.Webhook_Errors + 1 }, msg);
+                                                if (msgs.TryGetValue(msgKey, out var hookErrorMsg))
+                                                    msgs.TryUpdate(msgKey, new GluedMessage(hookErrorMsg) { Webhook_Errors = msg.Webhook_Errors + 1 }, hookErrorMsg);
                                                 _ = logger.LogError($"Failed to generate a webhook for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
                                             }
                                             else
@@ -292,11 +296,14 @@ namespace ElmerBot.Repositories
                                                 ThreadId = (childChannel) ? msg.Channel_ID : null
                                             };
                                             DiscordMessage hookMsg = await hook.ExecuteAsync(builder);
-                                            msgs.TryUpdate(msgKey, new GluedMessage(msg) { 
+
+                                            if (msgs.TryGetValue(msgKey, out var successfulMessage))
+                                                msgs.TryUpdate(msgKey, new GluedMessage(successfulMessage)
+                                            { 
                                                 Message_ID = hookMsg.Id,
                                                 Channel_Errors = 0,
                                                 Webhook_Errors = 0 
-                                            }, msg);
+                                            }, successfulMessage);
 
                                             _ = logger.LogBasic("Hook Submitted", $"Server: {channel.Guild.Name} ({channel.Guild.Id}) - #{channel.Name} ({channel.Id})");
                                         }
@@ -305,7 +312,8 @@ namespace ElmerBot.Repositories
                                             _ = logger.LogError($"Error during webhook submission. Server: {guild.Name} ({guild.Id}) - Channel: #{channel.Name} ({channel.Id})", guild, ex);
                                         }
 
-                                    msgs.TryUpdate(msgKey, new GluedMessage(msg) { isWatching = false }, msg);
+                                    if (msgs.TryGetValue(msgKey, out var gluedMessage))
+                                        msgs.TryUpdate(msgKey, new GluedMessage(gluedMessage) { isWatching = false }, gluedMessage);
                                     needSave = true;
                                 }
                                 catch (Exception ex)
