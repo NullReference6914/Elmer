@@ -1,6 +1,6 @@
 # This workflow will build a .NET project
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-net
-name: .Net
+name: .Net Core Builder
 
 on:
   push:
@@ -25,6 +25,8 @@ jobs:
       
     - name: Checkout repository
       uses: actions/checkout@v4
+      with: 
+        fetch-depth: 0
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -37,23 +39,37 @@ jobs:
     - name: Build project
       run: dotnet build --configuration Release --no-restore
 
-    - name: Publish project
+    - name: Publish project (DLL)
       run: dotnet publish --configuration Release --no-build -o ./Publish
+      
+    - name: Publish project (Win EXE)
+      run: dotnet publish --configuration Release --no-build -r win-x64 -o ./PublishWin
       
     - name: Install zip (if not pre-installed)
       run: sudo apt-get install zip -y
       # Ubuntu runners usually have zip, but this ensures it is available
 
-    - name: Zip the publish folder
+    - name: Zip DLL
       run: |
         cd ./Publish
         zip -r ../${{env.REPO_NAME}}-Published.zip .
+        
+    - name: Zip EXE
+      run: |
+        cd ./PublishWin
+        zip -r ../${{env.REPO_NAME}}_Win-Published.zip .
       
-    - name: Upload production artifact
+    - name: Upload DLL artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{env.REPO_NAME}}.zip
+        name: ${{env.REPO_NAME}}
         path: ./${{env.REPO_NAME}}-Published.zip 
+        
+    - name: Upload WinEXE artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{env.REPO_NAME}}_Exe
+        path: ./${{env.REPO_NAME}}_Win-Published.zip 
 
     - name: Create Release
       id: create_release
@@ -66,14 +82,24 @@ jobs:
         draft: true # Create a draft release first to add all assets before publishing
         prerelease: false
 
-    - name: Upload Release Asset
+    - name: Upload EXE
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # The URL for uploading assets
+        asset_path: ${{env.REPO_NAME}}_Win-Published.zip # Path to the file to upload
+        asset_name: ${{env.REPO_NAME}} EXE.zip # The name for the asset in the release
+        asset_content_type: application/zip
+
+    - name: Upload DLL
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # The URL for uploading assets
         asset_path: ${{env.REPO_NAME}}-Published.zip # Path to the file to upload
-        asset_name: ${{env.REPO_NAME}}.zip # The name for the asset in the release
+        asset_name: ${{env.REPO_NAME}} DLL.zip # The name for the asset in the release
         asset_content_type: application/zip
 #        
 #    # Optional: Publish the draft release once all assets are uploaded
