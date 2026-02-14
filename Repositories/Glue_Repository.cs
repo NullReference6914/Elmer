@@ -3,6 +3,7 @@ using DSharpPlus.Commands.Processors.SlashCommands;
 using DSharpPlus.Entities;
 using ElmerBot.Models;
 using Microsoft.Extensions.Options;
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace ElmerBot.Repositories
@@ -12,45 +13,82 @@ namespace ElmerBot.Repositories
         Task GlueMessage(SlashCommandContext ctx, string message, ulong channelId);
         Task UnglueMessage(SlashCommandContext ctx, ulong channelId);
 
+        void Save();
+        ConcurrentDictionary<string, GluedMessage> GetMessages();
+
         Task ProcessMessageCreated(DiscordClient c, DSharpPlus.EventArgs.MessageCreatedEventArgs e);
-        Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild);
+        Task ProcessGuildAvailable(DiscordClient c, DiscordGuild guild);
+        Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null);
     }
     internal class Glue_Repository(IOptionsSnapshot<Settings> _config, ILogging_Repository logger) : IGlue_Repository
     {
         Settings settings => _config.Value;
 
-        static string settingsFolder = AppDomain.CurrentDomain.BaseDirectory + "/Settings/";
-        internal List<GluedMessage> msgs => _msgs ??= Load();
-        List<GluedMessage> _msgs;
+        string settingsFolder = AppDomain.CurrentDomain.BaseDirectory + "/Settings/";
+        internal ConcurrentDictionary<string, GluedMessage> msgs => _msgs ??= Load();
+        ConcurrentDictionary<string, GluedMessage> _msgs;
+        DateTime? lastSavedTime;
+        System.Timers.Timer saveTimer;
+        bool needSave = false;
 
         #region JSON File Methods
 
-        internal List<GluedMessage> Load()
+        internal ConcurrentDictionary<string, GluedMessage> Load()
         {
+            if (saveTimer is null)
+            {
+                saveTimer = new System.Timers.Timer(5000);
+                saveTimer.AutoReset = true;
+                saveTimer.Elapsed += async (s, e) =>
+                {
+                    if (needSave)
+                        try
+                        {
+                            if (!Directory.Exists(settingsFolder))
+                                Directory.CreateDirectory(settingsFolder);
+                            await File.WriteAllTextAsync(settingsFolder + "list.json", JsonSerializer.Serialize(msgs.Select(m => m.Value).ToList()));
+
+                            needSave = false;
+
+                            if ((DateTime.Now - (lastSavedTime ?? DateTime.Now)).TotalMinutes > 2)
+                            {
+                                _msgs = null!;
+                                await logger.LogBasic("Memory Release", "Released messages from memory, as it has been over 2 minutes since the last save.");
+                            }
+                            else
+                            {
+                                lastSavedTime = DateTime.Now;
+                            }
+                        }
+                        catch (IOException ex)
+                        {
+                        }
+                        catch (Exception ex)
+                        {
+                            await logger.LogError($"Error saving glued messages", Exception: ex);
+                        }
+                };
+                saveTimer.Start();
+            }
+
             if (Directory.Exists(settingsFolder))
                 if (File.Exists(settingsFolder + "list.json"))
                     if (JsonSerializer.Deserialize<List<GluedMessage>>(File.ReadAllText(settingsFolder + "list.json")) is List<GluedMessage> m)
-                        return m;
+                    {
+                        if(lastSavedTime is null)
+                            m.ForEach(m => m.isWatching = false);
+                        return new ConcurrentDictionary<string, GluedMessage>(m.ToDictionary(k => $"{k.Server_ID}_{k.Channel_ID}", v => v));
+                    }
+
             return [];
         }
 
-        internal async Task<bool> Save()
-        {
-            try
-            {
-                if (!Directory.Exists(settingsFolder))
-                    Directory.CreateDirectory(settingsFolder);
-                await File.WriteAllTextAsync(settingsFolder + "list.json", JsonSerializer.Serialize(msgs));
-                return true;
-            }
-            catch (Exception ex)
-            {
-                await logger.LogError($"Error saving glued messages", Exception: ex);
-                return false;
-            }
-        }
+        public void Save() => needSave = true;
+
 
         #endregion
+
+        public ConcurrentDictionary<string, GluedMessage> GetMessages() => msgs;
 
         public async Task GlueMessage(SlashCommandContext ctx, string message, ulong channelId)
         {
@@ -70,26 +108,27 @@ namespace ElmerBot.Repositories
                 }
                 else if (msgs
                     .FirstOrDefault(m =>
-                        m.Channel_ID == channelId
-                        && m.Server_ID == ctx.Guild!.Id
-                    ) is GluedMessage msg && msg.Channel_ID != 0)
+                        m.Value.Channel_ID == channelId
+                        && m.Value.Server_ID == ctx.Guild!.Id
+                    ).Value is GluedMessage msg && msg.Channel_ID != 0)
                 {
                     msg.Message = message;
+                    needSave = true;
 
-                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent((await Save()) ? "The message content has been updated." : "There was an error during the updating of the message content.").AsEphemeral());
+                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The message content has been updated.").AsEphemeral());
                 }
                 else
                 {
-                    msgs.Add(new()
+                    msgs.TryAdd($"{ctx.Guild!.Id}_{channelId}", new()
                     {
                         Server_ID = ctx.Guild!.Id,
                         Channel_ID = channelId,
                         Message = message
                     });
 
-                    await Save();
+                    needSave = true;
 
-                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent((await Save()) ? "The message is now glued." : "There was an error saving the new glued message.").AsEphemeral());
+                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The message is now glued.").AsEphemeral());
 
                     await ProcessMessageCreated(ctx.Client, ctx.Guild, chnl);
                 }
@@ -107,13 +146,12 @@ namespace ElmerBot.Repositories
             {
                 if (msgs
                     .FirstOrDefault(m =>
-                        m.Channel_ID == channelId
-                        && m.Server_ID == ctx.Guild!.Id
-                    ) is GluedMessage msg && msg.Channel_ID != 0)
+                        m.Value.Channel_ID == channelId
+                        && m.Value.Server_ID == ctx.Guild!.Id
+                    ).Value is GluedMessage msg && msg.Channel_ID != 0)
                 {
-                    msgs.Remove(msg);
-
-                    await Save();
+                    msgs.Remove($"{ctx.Guild!.Id}_{channelId}", out _); 
+                    needSave = true;
 
                     try
                     {
@@ -124,7 +162,7 @@ namespace ElmerBot.Repositories
                     }
                     catch { }
 
-                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent((await Save()) ? "The message has been unglued." : "There was an error during the removal of the glued message.").AsEphemeral());
+                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The message has been unglued.").AsEphemeral());
                 }
                 else
                 {
@@ -142,23 +180,39 @@ namespace ElmerBot.Repositories
 
         public async Task ProcessMessageCreated(DiscordClient c, DSharpPlus.EventArgs.MessageCreatedEventArgs e)
         {
-            await ProcessMessageCreated(c, e.Guild, e.Channel, e.Message);
+            _ = ProcessMessageCreated(c, e.Guild, e.Channel, e.Message);
         }
 
-        public async Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild) 
+        public async Task ProcessGuildAvailable(DiscordClient c, DiscordGuild guild) 
         {
+            _ = logger.LogBasic("Processing Guild Available", $"Server: {guild.Name} ({guild.Id})");
             List<GluedMessage> serverMsgs = msgs
-                .Where(m => m.Server_ID == guild.Id && m.isWatching == false)
+                .Where(m => m.Value.Server_ID == guild.Id && m.Value.isWatching == false)
+                .Select(m => m.Value)
                 .ToList();
 
             foreach (GluedMessage msg in serverMsgs)
             {
                 DiscordChannel? chnl = null;
                 try { chnl = await guild.GetChannelAsync(msg.Channel_ID); }
-                catch { }
+                catch 
+                {  
+                    if(msg.Channel_Errors < 10)
+                    {
+                        msg.Channel_Errors++;
+                        _ = logger.LogError($"Failed to access channel for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                    }
+                    else
+                    {
+                        msgs.Remove($"{msg.Server_ID}_{msg.Channel_ID}", out _);
+                        _ = logger.LogError($"Failed to access channel for glued message after multiple attempts. Removing glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                    }
+
+                    needSave = true;
+                }
 
                 if (chnl is not null)
-                    await ProcessMessageCreated(c, guild, chnl);
+                    _ = ProcessMessageCreated(c, guild, chnl);
             }
         }
 
@@ -166,9 +220,13 @@ namespace ElmerBot.Repositories
         {
             try
             {
-                GluedMessage? msg = msgs
-                    .FirstOrDefault(m => m.Server_ID == guild.Id && m.Channel_ID == channel.Id && m.isWatching == false);
-                if(msg is not null)
+                GluedMessage? msg = null;
+
+                if (msgs.ContainsKey($"{guild.Id}_{channel.Id}"))
+                    if (!msgs[$"{guild.Id}_{channel.Id}"].isWatching)
+                        msg = msgs[$"{guild.Id}_{channel.Id}"];
+
+                if (!(msg?.isWatching ?? true))
                     if (
                         (settings.EnabledServers.Contains(guild.Id) || settings.Admin.ServerID == guild.Id)
                         && m?.Id != msg?.Message_ID
@@ -178,7 +236,7 @@ namespace ElmerBot.Repositories
                         msg!.isWatching = true;
                         await Task.Delay(5 * 1000);
 
-                        if (msgs.Contains(msg))
+                        if (msgs.ContainsKey($"{msg.Server_ID}_{msg.Channel_ID}"))
                         {
                             try
                             {
@@ -187,16 +245,17 @@ namespace ElmerBot.Repositories
                                         if (discordMsg is not null)
                                             await channel.DeleteMessageAsync(discordMsg);
                             }
-                            catch (Exception) { }
+                            catch { }
 
                             DiscordWebhook? hook = null;
-
+                            bool childChannel = channel.Parent is not null && channel.Parent?.Type != DiscordChannelType.Category;
                             try
                             {
                                 List<DiscordWebhook>? hooks = [];
-                                if (channel.Parent is not null)
+
+                                if (childChannel)
                                 {
-                                    var list = await channel.Parent.GetWebhooksAsync();
+                                    var list = await channel.Parent!.GetWebhooksAsync();
                                     hooks = list?.ToList();
                                 }
                                 else
@@ -213,28 +272,48 @@ namespace ElmerBot.Repositories
                             if (hook is null)
                                 try
                                 {
-                                    hook = await ((channel.Parent is not null)
-                                        ? channel.Parent.CreateWebhookAsync("Elmers Hook")
+                                    hook = await ((childChannel)
+                                        ? channel.Parent!.CreateWebhookAsync("Elmers Hook")
                                         : channel.CreateWebhookAsync("Elmers Hook"));
                                 }
-                                catch { }
+                                catch 
+                                {
+                                    if (msg.Webhook_Errors < 10)
+                                    {
+                                        msg.Webhook_Errors++;
+                                        _ = logger.LogError($"Failed to generate a webhook for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                                    }
+                                    else
+                                    {
+                                        msgs.Remove($"{msg.Server_ID}_{msg.Channel_ID}", out _);
+                                        _ = logger.LogError($"Failed to generate a webhook for glued message after multiple attempts. Removing glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                                    }
+                                }
 
                             if (hook is not null)
-                            {
-                                DiscordWebhookBuilder builder = new()
+                                try
                                 {
-                                    Content = msg.Message,
-                                    AvatarUrl = msg.Avatar_Url ?? guild.IconUrl,
-                                    Username = msg.Username ?? guild.Name,
-                                    ThreadId = (channel.Parent is not null) ? msg.Channel_ID : null
-                                };
-                                DiscordMessage hookMsg = await hook.ExecuteAsync(builder);
-                                msg.Message_ID = hookMsg.Id;
+                                    DiscordWebhookBuilder builder = new()
+                                    {
+                                        Content = msg.Message,
+                                        AvatarUrl = msg.Avatar_Url ?? guild.IconUrl,
+                                        Username = msg.Username ?? guild.Name,
+                                        ThreadId = (childChannel) ? msg.Channel_ID : null
+                                    };
+                                    DiscordMessage hookMsg = await hook.ExecuteAsync(builder);
+                                    msg.Message_ID = hookMsg.Id;
 
-                                logger.LogBasic("Hook Submitted", $"Server: {channel.Guild.Name} ({channel.Guild.Id}) - #{channel.Name} ({channel.Id})").Wait();
-                            }
+                                    _ = logger.LogBasic("Hook Submitted", $"Server: {channel.Guild.Name} ({channel.Guild.Id}) - #{channel.Name} ({channel.Id})");
+
+                                    msg.Channel_Errors = 0;
+                                    msg.Webhook_Errors = 0;
+                                }
+                                catch(Exception ex)
+                                {
+                                    _ = logger.LogError("Error during webhook submission", guild, ex);
+                                }
                             msg.isWatching = false;
-                            await Save();
+                            needSave = true;
                         }
                     }
             }

@@ -14,7 +14,7 @@ namespace ElmerBot.Models
             {
                 string json = JsonSerializer.Serialize(this);
 
-                await File.WriteAllTextAsync($"{Directory.GetCurrentDirectory()}\\settings.json", json);
+                await File.WriteAllTextAsync($"{AppDomain.CurrentDomain.BaseDirectory}\\settings.json", json);
                 return (true, null!);
             }
             catch (Exception ex)

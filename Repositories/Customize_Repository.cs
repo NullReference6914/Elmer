@@ -10,19 +10,16 @@ namespace ElmerBot.Repositories
         Task SetProfilePicture(SlashCommandContext ctx, ulong channelId, string? url);
         Task SetUsername(SlashCommandContext ctx, ulong channelId, string? username);
     }
-    internal class Customize_Repository(IOptionsSnapshot<Settings> _config, ILogging_Repository logger) : ICustomize_Repository
+    internal class Customize_Repository(ILogging_Repository logger, IGlue_Repository glueRepo) : ICustomize_Repository
     {
-        Glue_Repository glueRepo = new(_config,logger);
-
         public async Task SetProfilePicture(SlashCommandContext ctx, ulong channelId, string? url)
         {
             try
             {
-                GluedMessage? msg = glueRepo.msgs.Find(m => m.Server_ID == ctx.Guild!.Id && m.Channel_ID == channelId);
-                if (msg != null)
+                if (glueRepo.GetMessages().TryGetValue($"{ctx.Guild!.Id}_{channelId}", out var msg))
                 {
                     msg.Avatar_Url = url;
-                    await glueRepo.Save();
+                    glueRepo.Save();
 
                     await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The pfp has been set.").AsEphemeral());
 
@@ -44,11 +41,10 @@ namespace ElmerBot.Repositories
         {
             try
             {
-                GluedMessage? msg = glueRepo.msgs.Find(m => m.Server_ID == ctx.Guild!.Id && m.Channel_ID == channelId);
-                if (msg != null)
+                if (glueRepo.GetMessages().TryGetValue($"{ctx.Guild!.Id}_{channelId}", out var msg))
                 {
                     msg.Username = username;
-                    await glueRepo.Save();
+                    glueRepo.Save();
 
                     await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The username has been set.").AsEphemeral());
 

@@ -56,12 +56,12 @@ namespace ElmerBot
                 .CreateDefault(settings.Token, DiscordIntents.GuildWebhooks
                     | DiscordIntents.GuildMessages
                     | SlashCommandProcessor.RequiredIntents)
-                .ConfigureLogging(l => l.AddProvider(new SerilogLoggerProvider(Log.Logger, true)))
+                .ConfigureLogging(l => l.AddProvider(new SerilogLoggerProvider(Log.Logger, true)).SetMinimumLevel(LogLevel.Warning))
                 .UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) =>
                 {
+                    extension.AddCommands<Admin_Commands>();
                     extension.AddCommands<Glue_Commands>();
                     extension.AddCommands<Customize_Commands>();
-                    extension.AddCommands<Admin_Commands>();
 
                     extension.AddCheck<BasicGuildCheck>();
                     extension.AddCheck<BasicUserCheck>();
@@ -74,14 +74,14 @@ namespace ElmerBot
                         .AddJsonFile("settings.json", optional: false, reloadOnChange: true)
                         .Build());
 
-                    services.AddScoped<IGlue_Repository, Glue_Repository>();
+                    services.AddSingleton<IGlue_Repository, Glue_Repository>();
                     services.AddScoped<ICustomize_Repository, Customize_Repository>();
                     services.AddScoped<IAdmin_Repository, Admin_Repository>();
                     services.AddSingleton<ILogging_Repository, Logging_Repository>();
                 })
                 .ConfigureEventHandlers(e =>
                     e.HandleMessageCreated((c, e) => c.ServiceProvider.GetService<IGlue_Repository>()?.ProcessMessageCreated(c, e)!)
-                        .HandleGuildAvailable((c, e) => c.ServiceProvider.GetService<IGlue_Repository>()?.ProcessMessageCreated(c, e.Guild)!)
+                        .HandleGuildAvailable((c, e) => c.ServiceProvider.GetService<IGlue_Repository>()?.ProcessGuildAvailable(c, e.Guild)!)
                 );
 
             try 

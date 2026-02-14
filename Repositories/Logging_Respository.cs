@@ -4,6 +4,7 @@ using ElmerBot.Models;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Context;
+using static System.Collections.Specialized.BitVector32;
 
 namespace ElmerBot.Repositories
 {
@@ -130,7 +131,7 @@ namespace ElmerBot.Repositories
             if (Exception is not null)
                 errormsg = ((Exception.InnerException is not null) ? newline + "### Inner Error Information" + newline + newline + Exception.InnerException.GetType().FullName + " - " + Exception.InnerException.Message + newline + newline + "**Stack Trace** - " + Exception.InnerException.StackTrace?.Trim().Substring(3) : "") + newline + "### Main Error Information" + newline + newline + Exception.GetType().FullName + " - " + Exception.Message + ((!String.IsNullOrEmpty(Exception.StackTrace)) ? newline + newline + "**Stack Trace** - " + Exception.StackTrace.Trim().Substring(3) : "");
 
-            errormsg = newline + Error + newline + ((Context is not null) ? $"Server: {Context.Guild?.Name}, {Context.Guild?.Id}" + newline + $"User: {Context.User?.GlobalName}, {Context.User?.Id}" + newline : "") + errormsg;
+            errormsg = Error + newline + ((Context is not null) ? $"Server: {Context.Guild?.Name}, {Context.Guild?.Id}" + newline + $"User: {Context.User?.GlobalName}, {Context.User?.Id}" + newline : "") + errormsg;
 
             List<string> prefixFormat = [.. FormatFixes];
 
@@ -145,7 +146,7 @@ namespace ElmerBot.Repositories
                 if (errormsg.Contains(prefixFormat[i]))
                     errormsg = errormsg.Replace(prefixFormat[i], FormatFixes[i]);
 
-            errormsg = $"## <t:{((DateTimeOffset)DateTime.Now).ToUnixTimeSeconds()}>\r\n" + errormsg;
+            errormsg = $"{DateTime.Now.ToDiscordDisplay(TimeFormat.LongTime)} **[### ERROR ###]** - " + errormsg;
 
             string msg = "";
             errormsg.Split(newline)
@@ -174,10 +175,16 @@ namespace ElmerBot.Repositories
                 {
                     try
                     {
-                        string msg1 = errorMsgs.First();
-                        errorMsgs.Remove(msg1);
+                        string msg = "";
 
-                        await this.SendMessage("Error Message", msg1, this.settings.Admin.ChannelID);
+                        do
+                        {
+                            string newMsg = errorMsgs.First();
+                            msg += ((msg.Length > 0) ? "\r\n" : "") + newMsg;
+                            errorMsgs.Remove(newMsg);
+                        } while (errorMsgs.Count > 0 && (msg + "\r\n" + errorMsgs.FirstOrDefault()).Length < 2000);
+
+                        await this.SendMessage("Error Message", msg, this.settings.Admin.ChannelID);
                         await Task.Delay(1000);
                     }
                     catch (Exception ex)

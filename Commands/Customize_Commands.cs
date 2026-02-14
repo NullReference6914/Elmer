@@ -3,6 +3,7 @@ using DSharpPlus.Commands.Processors.SlashCommands;
 using DSharpPlus.Entities;
 using ElmerBot.Classes.Attributes;
 using ElmerBot.Repositories;
+using System.ComponentModel;
 
 namespace ElmerBot.Commands
 {
@@ -11,7 +12,7 @@ namespace ElmerBot.Commands
     [CustomRequirePermissions(userPermissions: [DiscordPermission.ManageMessages])]
     internal class Customize_Commands(ICustomize_Repository repo)
     {
-        [Command("pfp")]
+        [Command("pfp"), Description("Set the profile picture of the sticky message")]
         public async Task ProfilePic(SlashCommandContext ctx,
             [Parameter("URL")] 
             string url,
@@ -19,7 +20,7 @@ namespace ElmerBot.Commands
             DiscordChannel? chnl = null
         ) => await repo.SetProfilePicture(ctx, chnl?.Id ?? ctx.Channel.Id, url.Trim());
 
-        [Command("username")]
+        [Command("username"), Description("Set the Username for the sticky message")]
         public async Task Username(SlashCommandContext ctx,
             [Parameter("Username")] 
             string user,
