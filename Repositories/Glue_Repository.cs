@@ -1,4 +1,4 @@
-﻿using DSharpPlus;
+using DSharpPlus;
 using DSharpPlus.Commands.Processors.SlashCommands;
 using DSharpPlus.Entities;
 using ElmerBot.Models;
@@ -54,6 +54,7 @@ namespace ElmerBot.Repositories
                             if ((DateTime.Now - (lastSavedTime ?? DateTime.Now)).TotalMinutes > 2)
                             {
                                 _msgs = null!;
+                                lastSaveTime = null;
                                 await logger.LogBasic("Memory Release", "Released messages from memory, as it has been over 2 minutes since the last save.");
                             }
                             else
@@ -61,9 +62,7 @@ namespace ElmerBot.Repositories
                                 lastSavedTime = DateTime.Now;
                             }
                         }
-                        catch (IOException ex)
-                        {
-                        }
+                        catch (IOException ex) { }
                         catch (Exception ex)
                         {
                             await logger.LogError($"Error saving glued messages", Exception: ex);
