@@ -206,7 +206,13 @@ namespace ElmerBot.Repositories
                         }
 
                         if (chnl is not null)
+                        {
+                            DiscordMessage? msg = null;
+                            try { msg = (await chnl.GetMessagesAsync(1)).First(); }
+                            catch { }
+
                             await ProcessMessageCreated(c, guild, chnl);
+                       }
                     }
             });
         }
