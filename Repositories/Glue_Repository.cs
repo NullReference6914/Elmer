@@ -5,6 +5,7 @@ using DSharpPlus.EventArgs;
 using ElmerBot.Models;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text.Json;
 
@@ -208,10 +209,11 @@ namespace ElmerBot.Repositories
 
             if(keys.Count == 0)
             {
-                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("There currently are no saved stickys."));
+                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("There currently are no stickys."));
             }
             else
             {
+                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("Generating list. Please wait..."));
                 List<string> stickyMsgs = [];
                 foreach (var key in keys)
                     if(msgs.TryGetValue(key, out var msg))
@@ -223,6 +225,25 @@ namespace ElmerBot.Repositories
 
                         stickyMsgs.Add(sticky);
                     }
+
+                _ = ctx.Interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder() { Content = "Sticky information will display below." });
+
+                string mesage = "";
+
+                do
+                {
+                    do
+                    {
+                        string newMsg = stickyMsgs.First();
+                        mesage += ((mesage.Length > 0) ? "\r\n" : "") + newMsg;
+                        stickyMsgs.Remove(newMsg);
+                    } while (stickyMsgs.Count > 0 && (mesage + "\r\n" + stickyMsgs.FirstOrDefault()).Length < 2000);
+
+                    await ctx.Channel.SendMessageAsync(mesage);
+
+                    if(stickyMsgs.Count > 0)
+                        await Task.Delay(2000);
+                } while (stickyMsgs.Count > 0);
             }
         }
 
@@ -329,7 +350,7 @@ namespace ElmerBot.Repositories
                     if (msgs.TryGetValue(msgKey, out var message))
                         if ((m is null || m.Id != message.Message_ID) && !message.isWatching)
                         {
-                            _ = logger.LogBasic("Processing Sticky", $"**Server**: {guild.Name} ({guild.Id}) - **Channel**: \\#{channel.Name} ({channel.Id})");
+                            _ = logger.LogBasic("Processing Sticky", $"**Server**: {guild.Name} ({guild.Id}) -> \\#{channel.Name} ({channel.Id})");
 
                             msgs.TryUpdate(msgKey, new GluedMessage(message) { isWatching = true }, message);
                             needSave = true;
@@ -413,7 +434,7 @@ namespace ElmerBot.Repositories
                                                     , successfulMessage
                                                 );
 
-                                            _ = logger.LogBasic("Hook Submitted", $"**Server**: {channel.Guild.Name} ({channel.Guild.Id}) - \\#{channel.Name} ({channel.Id})");
+                                            _ = logger.LogBasic("Sticky Posted", $"**Server**: {channel.Guild.Name} ({channel.Guild.Id}) -> \\#{channel.Name} ({channel.Id})");
                                         }
                                         catch (Exception ex)
                                         {
