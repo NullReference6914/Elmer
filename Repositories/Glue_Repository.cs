@@ -19,7 +19,7 @@ namespace ElmerBot.Repositories
 
         Task ProcessMessageCreated(DiscordClient c, DSharpPlus.EventArgs.MessageCreatedEventArgs e);
         Task ProcessGuildAvailable(DiscordClient c, DiscordGuild guild);
-        Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null, bool startup = false);
+        Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null);
     }
     internal class Glue_Repository(IOptionsSnapshot<Settings> _config, ILogging_Repository logger) : IGlue_Repository
     {
@@ -176,43 +176,43 @@ namespace ElmerBot.Repositories
 
         #region Processing Methods
 
-        public async Task ProcessMessageCreated(DiscordClient c, DSharpPlus.EventArgs.MessageCreatedEventArgs e)
-        {
-            _ = ProcessMessageCreated(c, e.Guild, e.Channel, e.Message);
-        }
+        public async Task ProcessMessageCreated(DiscordClient c, DSharpPlus.EventArgs.MessageCreatedEventArgs e) => await ProcessMessageCreated(c, e.Guild, e.Channel, e.Message);
 
         public async Task ProcessGuildAvailable(DiscordClient c, DiscordGuild guild) 
         {
-            _ = logger.LogBasic("Processing Guild Available", $"Server: {guild.Name} ({guild.Id})");
+            _ = Task.Run(async () =>
+            {
+                _ = logger.LogBasic("Processing Guild Available", $"Server: {guild.Name} ({guild.Id})");
 
-            foreach (var key in msgs.Keys.Where(k => k.StartsWith($"{guild.Id}_")))
-                if(msgs.TryGetValue(key, out var msg))
-                {
-                    DiscordChannel? chnl = null;
-                    try { chnl = await guild.GetChannelAsync(msg.Channel_ID); }
-                    catch 
-                    {  
-                        if(msg.Channel_Errors < 10)
+                foreach (var key in msgs.Keys.Where(k => k.StartsWith($"{guild.Id}_")))
+                    if (msgs.TryGetValue(key, out var msg))
+                    {
+                        DiscordChannel? chnl = null;
+                        try { chnl = await guild.GetChannelAsync(msg.Channel_ID); }
+                        catch
                         {
-                            if(msgs.TryGetValue(key, out var gluedMessage))
-                                msgs.TryUpdate(key, new GluedMessage(gluedMessage) { Channel_Errors = msg.Channel_Errors + 1 }, gluedMessage);
-                            _ = logger.LogError($"Failed to access channel for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
-                        }
-                        else
-                        {
-                            msgs.Remove($"{msg.Server_ID}_{msg.Channel_ID}", out _);
-                            _ = logger.LogError($"Failed to access channel for glued message after multiple attempts. Removing glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                            if (msg.Channel_Errors < 10)
+                            {
+                                if (msgs.TryGetValue(key, out var gluedMessage))
+                                    msgs.TryUpdate(key, new GluedMessage(gluedMessage) { Channel_Errors = msg.Channel_Errors + 1 }, gluedMessage);
+                                _ = logger.LogError($"Failed to access channel for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                            }
+                            else
+                            {
+                                msgs.Remove($"{msg.Server_ID}_{msg.Channel_ID}", out _);
+                                _ = logger.LogError($"Failed to access channel for glued message after multiple attempts. Removing glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                            }
+
+                            needSave = true;
                         }
 
-                        needSave = true;
+                        if (chnl is not null)
+                            await ProcessMessageCreated(c, guild, chnl);
                     }
-
-                    if (chnl is not null)
-                        _ = ProcessMessageCreated(c, guild, chnl, startup:true);
-                }
+            });
         }
 
-        public async Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null, bool startup = false)
+        public async Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null)
         {
             try
             {
@@ -225,9 +225,7 @@ namespace ElmerBot.Repositories
 
                             msgs.TryUpdate(msgKey, new GluedMessage(message) { isWatching = true }, message);
                             needSave = true;
-
-                            if(!startup)
-                                await Task.Delay(5 * 1000);
+                            await Task.Delay(5 * 1000);
 
                             if (msgs.TryGetValue(msgKey, out var msg))
                                 try
@@ -299,11 +297,13 @@ namespace ElmerBot.Repositories
 
                                             if (msgs.TryGetValue(msgKey, out var successfulMessage))
                                                 msgs.TryUpdate(msgKey, new GluedMessage(successfulMessage)
-                                            { 
-                                                Message_ID = hookMsg.Id,
-                                                Channel_Errors = 0,
-                                                Webhook_Errors = 0 
-                                            }, successfulMessage);
+                                                    { 
+                                                        Message_ID = hookMsg.Id,
+                                                        Channel_Errors = 0,
+                                                        Webhook_Errors = 0 
+                                                    }
+                                                    , successfulMessage
+                                                );
 
                                             _ = logger.LogBasic("Hook Submitted", $"Server: {channel.Guild.Name} ({channel.Guild.Id}) - #{channel.Name} ({channel.Id})");
                                         }
