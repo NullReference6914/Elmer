@@ -13,6 +13,7 @@ namespace ElmerBot.Repositories
     {
         Task GlueMessage(SlashCommandContext ctx, string message, ulong channelId);
         Task UnglueMessage(SlashCommandContext ctx, ulong channelId);
+        Task ViewStickys(SlashCommandContext ctx);
 
         void Save();
         ConcurrentDictionary<string, GluedMessage> GetMessages();
@@ -54,7 +55,7 @@ namespace ElmerBot.Repositories
                             if ((DateTime.Now - (lastSavedTime ?? DateTime.Now)).TotalMinutes > 2)
                             {
                                 _msgs = null!;
-                                lastSaveTime = null;
+                                lastSavedTime = null;
                                 await logger.LogBasic("Memory Release", "Released messages from memory, as it has been over 2 minutes since the last save.");
                             }
                             else
@@ -62,7 +63,7 @@ namespace ElmerBot.Repositories
                                 lastSavedTime = DateTime.Now;
                             }
                         }
-                        catch (IOException ex) { }
+                        catch (IOException) { }
                         catch (Exception ex)
                         {
                             await logger.LogError($"Error saving glued messages", Exception: ex);
@@ -98,6 +99,8 @@ namespace ElmerBot.Repositories
                 try { chnl = await ctx.Guild!.GetChannelAsync(channelId); }
                 catch { }
 
+                DiscordPermission[] perms = [DiscordPermission.ViewChannel, DiscordPermission.ManageWebhooks, DiscordPermission.ManageMessages];
+
                 if (String.IsNullOrEmpty(message))
                 {
                     await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("Please provide a message to glue").AsEphemeral());
@@ -106,9 +109,23 @@ namespace ElmerBot.Repositories
                 {
                     await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The provided channel is invalid.").AsEphemeral());
                 }
+                else if (!chnl.PermissionsFor(await ctx.Guild!.GetBotMember(ctx.Client))
+                    .HasAllPermissions(new DiscordPermissions(perms))
+                )
+                {
+                    DiscordMember botMember = await ctx.Guild!.GetBotMember(ctx.Client);
+                    List<string> missingPerms = [];
+
+                    foreach(var p in perms)
+                        if (!chnl.PermissionsFor(botMember).HasPermission(p))
+                            missingPerms.Add(p.ToStringFast());
+
+                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent($"Unable to use the channel {chnl.Mention}. Missing permissions: {String.Join(" ,", missingPerms)}").AsEphemeral());
+
+                }
                 else if (msgs.TryGetValue($"{ctx.Guild!.Id}_{channelId}", out var msg))
                 {
-                    if(msgs.TryUpdate($"{ctx.Guild!.Id}_{channelId}", new GluedMessage(msg) { Message = message }, msg))
+                    if (msgs.TryUpdate($"{ctx.Guild!.Id}_{channelId}", new GluedMessage(msg) { Message = message }, msg))
                     {
                         needSave = true;
                         await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The message content has been updated.").AsEphemeral());
@@ -117,7 +134,7 @@ namespace ElmerBot.Repositories
                     {
                         await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occured during the saving of the message. Please try again.").AsEphemeral());
                     }
-                        
+
                 }
                 else
                 {
@@ -173,6 +190,30 @@ namespace ElmerBot.Repositories
             }
         }
 
+        public async Task ViewStickys(SlashCommandContext ctx)
+        {
+            List<string> keys = [.. msgs.Keys.Where(k => k.StartsWith(ctx.Guild!.Id.ToString()))];
+
+            if(keys.Count == 0)
+            {
+                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("There currently are no saved stickys."));
+            }
+            else
+            {
+                List<string> stickyMsgs = [];
+                foreach (var key in keys)
+                    if(msgs.TryGetValue(key, out var msg))
+                    {
+                        string sticky = $@"**Channel**: <#{msg.Channel_ID}> (ID: {msg.Channel_ID}
+**Message**: {msg.Message}";
+                        if (msg.Username is not null) sticky += $"\r\n**Username**: {msg.Username}";
+                        if (msg.Avatar_Url is not null) sticky += $"\r\n**Profile Picture**: {msg.Avatar_Url}";
+
+                        stickyMsgs.Add(sticky);
+                    }
+            }
+        }
+
         #region Processing Methods
 
         public async Task ProcessMessageCreated(DiscordClient c, DSharpPlus.EventArgs.MessageCreatedEventArgs e) => await ProcessMessageCreated(c, e.Guild, e.Channel, e.Message);
@@ -207,11 +248,12 @@ namespace ElmerBot.Repositories
 
                         if (chnl is not null)
                         {
-                            DiscordMessage? msg = null;
-                            try { msg = (await chnl.GetMessagesAsync(1)).First(); }
+                            DiscordMessage? lastMsg = null;
+                            try { lastMsg = await chnl.GetMessagesAsync(1).FirstAsync(); }
+
                             catch { }
 
-                            await ProcessMessageCreated(c, guild, chnl);
+                            await ProcessMessageCreated(c, guild, chnl, lastMsg);
                        }
                     }
             });

@@ -21,10 +21,13 @@ namespace ElmerBot.Commands
         => await repo.GlueMessage(ctx, content, chnl?.Id ?? ctx.Channel.Id);
 
 
-        [Command("unglue"), Description("remove a sticky message")]
+        [Command("unglue"), Description("Remove a sticky message")]
         public async Task unglueMessage(SlashCommandContext ctx,
             [Parameter("Channel")] 
             DiscordChannel? chnl = null
         ) => await repo.UnglueMessage(ctx, chnl?.Id ?? ctx.Channel.Id);
+
+        [Command("view"), Description("View all stickys for the server")]
+        public async Task View(SlashCommandContext ctx) => await repo.ViewStickys(ctx);
     }
 }
