@@ -57,7 +57,7 @@ namespace ElmerBot
                     | DiscordIntents.GuildMessages
                     | DiscordIntents.Guilds
                     | SlashCommandProcessor.RequiredIntents)
-                .ConfigureLogging(l => l.AddProvider(new SerilogLoggerProvider(Log.Logger, true)).SetMinimumLevel(LogLevel.Warning))
+                .ConfigureLogging(l => l.AddProvider(new SerilogLoggerProvider(Log.Logger, true)).SetMinimumLevel(LogLevel.Information))
                 .UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) =>
                 {
                     extension.AddCommands<Admin_Commands>();

@@ -61,7 +61,7 @@ namespace ElmerBot.Repositories
                             {
                                 _msgs = null!;
                                 lastSavedTime = null;
-                                await logger.LogBasic("Memory Release", "Released messages from memory, as it has been over 2 minutes since the last save.");
+                                await logger.LogBasic("Memory Release", "Released stickys from memory, as it has been over 2 minutes since the last save.");
                             }
                             else
                             {
