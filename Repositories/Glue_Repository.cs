@@ -242,6 +242,30 @@ namespace ElmerBot.Repositories
             }
         }
 
+        public async Task ViewStickys(SlashCommandContext ctx)
+        {
+            List<string> keys = [.. msgs.Keys.Where(k => k.StartsWith(ctx.Guild!.Id.ToString()))];
+
+            if(keys.Count == 0)
+            {
+                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("There currently are no saved stickys."));
+            }
+            else
+            {
+                List<string> stickyMsgs = [];
+                foreach (var key in keys)
+                    if(msgs.TryGetValue(key, out var msg))
+                    {
+                        string sticky = $@"**Channel**: <#{msg.Channel_ID}> (ID: {msg.Channel_ID}
+**Message**: {msg.Message}";
+                        if (msg.Username is not null) sticky += $"\r\n**Username**: {msg.Username}";
+                        if (msg.Avatar_Url is not null) sticky += $"\r\n**Profile Picture**: {msg.Avatar_Url}";
+
+                        stickyMsgs.Add(sticky);
+                    }
+            }
+        }
+
         #region Processing Methods
 
         public async Task Process_GuildDownloadCompleted(DiscordClient c, GuildDownloadCompletedEventArgs e)
