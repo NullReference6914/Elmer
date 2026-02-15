@@ -23,17 +23,19 @@ namespace ElmerBot.Repositories
 
                     await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The pfp has been set.").AsEphemeral());
 
-                    await glueRepo.ProcessMessageCreated(ctx.Client, ctx.Guild!, ctx.Channel);
+                    await glueRepo.Process_Sticky(ctx.Client, ctx.Guild!, ctx.Channel);
                 }
                 else
                 {
-                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("There is currently no glued message for the provided channel.").AsEphemeral());
+                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("There is currently no sticky for the provided channel.").AsEphemeral());
                 }
             }
             catch (Exception ex)
             {
-                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occurred while setting the profile picture.").AsEphemeral());
-                await logger.LogError($"Error in Set Profile Picture Command", ctx, ex);
+                await Task.WhenAll(
+                    ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occurred while setting the profile picture.").AsEphemeral()).AsTask(),
+                    logger.LogError($"Error in Set Profile Picture Command", ctx, ex)
+                );
             }
         }
 
@@ -48,17 +50,19 @@ namespace ElmerBot.Repositories
 
                     await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The username has been set.").AsEphemeral());
 
-                    await glueRepo.ProcessMessageCreated(ctx.Client, ctx.Guild!, ctx.Channel);
+                    await glueRepo.Process_Sticky(ctx.Client, ctx.Guild!, ctx.Channel);
                 }
                 else
                 {
-                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("There is currently no glued message for the provided channel.").AsEphemeral());
+                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("There is currently no sticky for the provided channel.").AsEphemeral());
                 }
             }
             catch (Exception ex)
             {
-                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occurred while setting the username.").AsEphemeral());
-                await logger.LogError($"Error in Set Username Command", ctx, ex);
+                await Task.WhenAll(
+                    ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occurred while setting the username.").AsEphemeral()).AsTask(),
+                    logger.LogError($"Error in Set Username Command", ctx, ex)
+                );
             }
         }
     }

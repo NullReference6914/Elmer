@@ -1,4 +1,7 @@
-﻿namespace ElmerBot
+﻿using DSharpPlus;
+using DSharpPlus.Entities;
+
+namespace ElmerBot
 {
     internal static class DateTimeExtensions
     {
@@ -22,5 +25,10 @@
         ShortDate,
         LongDate,
         LongDateTime
+    }
+
+    internal static class DiscordGuildExtensions
+    {
+        public static async Task<DiscordMember> GetBotMember(this DiscordGuild guild, DiscordClient client) => await guild.GetMemberAsync(client.CurrentUser.Id);
     }
 }
