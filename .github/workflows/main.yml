@@ -19,12 +19,5 @@ jobs:
         uses: reecetech/version-increment@2024.10.1
         id: version
         with:
-          scheme: semver
+          scheme: calver
           increment: patch
-
-      - name: Build image
-        uses: docker/build-push-action@v2
-        with:
-          push: false
-          tags: "example/application:${{ steps.version.outputs.version }}"
-          context: .
