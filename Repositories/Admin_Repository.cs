@@ -12,6 +12,7 @@ namespace ElmerBot.Repositories
         Task Server_Leave(SlashCommandContext ctx, string serverID);
         Task Server_Allow(SlashCommandContext ctx, string serverID);
         Task Server_Disallow(SlashCommandContext ctx, string serverID);
+        Task Server_View(SlashCommandContext ctx);
     }
     internal class Admin_Repository(IOptionsSnapshot<Settings> _config, ILogging_Repository logger, IGlue_Repository glueRepo) : IAdmin_Repository
     {
@@ -167,6 +168,29 @@ namespace ElmerBot.Repositories
                     logger.LogError("Error during Server Disallow Command.", ctx, ex),
                     ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occured during the removing of that server ID.").AsEphemeral()).AsTask()
                 );
+            }
+        }
+
+        public async Task Server_View(SlashCommandContext ctx)
+        {
+            List<string> serverInfo = [];
+
+            await foreach(var server in ctx.Client.GetGuildsAsync())
+            {
+                DiscordMember? owner = await server.GetAllMembersAsync().FirstOrDefaultAsync(m => m.IsOwner);
+                var members = server.GetAllMembersAsync();
+                var channels = await server.GetChannelsAsync();
+
+                int memberCount = await members.CountAsync(m => !m.IsBot),
+                    botCount = await members.CountAsync(m => m.IsBot),
+                    categories = channels.Count(c => c.IsCategory),
+                    vcs = channels.Count(c => c.Type == DiscordChannelType.Voice),
+                    textChannels = channels.Count(c => !c.IsThread && !c.IsCategory && c.Type == DiscordChannelType.Text);
+
+                serverInfo.Add($@"### {server.Name} ({server.Id}) 
+> **Enabled**: :{((settings.EnabledServers.Contains(server.Id)) ? "white_check_mark" : "x")}:
+> **Owner**: {owner?.DisplayName} ({owner?.Id})
+> **Stats**: Users ( {memberCount} :man_technologist: / {botCount} :robot: ) Chanenls ( {categories} :open_file_folder: / {textChannels} :hash: / {vcs} :microphone: )");
             }
         }
     }
