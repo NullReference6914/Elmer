@@ -28,6 +28,13 @@ jobs:
       with:
           fetch-depth: 0
           ref: main
+    
+    - name: Get next version
+      uses: reecetech/version-increment@2024.10.1
+      id: version
+      with:
+        scheme: calver
+        increment: patch
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -78,7 +85,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ env.NOW }}
+        tag_name: ${{ steps.version.outputs.v-version }}
         release_name: ${{env.REPO_NAME}} ${{ env.NOW }}
         draft: true # Create a draft release first to add all assets before publishing
         prerelease: false
