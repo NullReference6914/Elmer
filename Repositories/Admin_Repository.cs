@@ -13,7 +13,7 @@ namespace ElmerBot.Repositories
         Task Server_Allow(SlashCommandContext ctx, string serverID);
         Task Server_Disallow(SlashCommandContext ctx, string serverID);
     }
-    internal class Admin_Repository(IOptionsSnapshot<Settings> _config, ILogging_Repository logger) : IAdmin_Repository
+    internal class Admin_Repository(IOptionsSnapshot<Settings> _config, ILogging_Repository logger, IGlue_Repository glueRepo) : IAdmin_Repository
     {
         Settings settings => _config.Value;
 
@@ -81,14 +81,19 @@ namespace ElmerBot.Repositories
             {
                 if (!String.IsNullOrEmpty(serverID))
                     if (ulong.TryParse(serverID, out ulong server_id))
-                        ctx.Client.Guilds[server_id].LeaveAsync().Wait();
+                    {
+                        await ctx.Client.Guilds[server_id].LeaveAsync();
+                        await glueRepo.RemoveServer(server_id);
+                    }
 
                 await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("I have left or attempted to leave the provided server.").AsEphemeral());
             }
             catch (Exception ex)
             {
-                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occured during the attempt to leave the provided server.").AsEphemeral());
-                await logger.LogError("Error during Server Leave Command.", ctx, ex);
+                await Task.WhenAll(
+                    ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occured during the attempt to leave the provided server.").AsEphemeral()).AsTask(),
+                    logger.LogError("Error during Server Leave Command.", ctx, ex)
+                );
             }
         }
 
@@ -108,8 +113,10 @@ namespace ElmerBot.Repositories
                         }
                         else
                         {
-                            await logger.LogError("Error during Server Allow Command.", ctx, ex);
-                            await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent($"An error occured during the saving of that server ID").AsEphemeral());
+                            await Task.WhenAll(
+                                logger.LogError("Error during Server Allow Command.", ctx, ex),
+                                ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent($"An error occured during the saving of that server ID").AsEphemeral()).AsTask()
+                            );
                         }
                         return;
                     }
@@ -118,8 +125,10 @@ namespace ElmerBot.Repositories
             }
             catch (Exception ex)
             {
-                await logger.LogError("Error during Server Allow Command.", ctx, ex);
-                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occured during the adding of that server ID.").AsEphemeral());
+                await Task.WhenAll(
+                    logger.LogError("Error during Server Allow Command.", ctx, ex),
+                    ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occured during the adding of that server ID.").AsEphemeral()).AsTask()
+                );
             }
         }
 
@@ -135,12 +144,17 @@ namespace ElmerBot.Repositories
                         var (success, ex) = await settings.Save();
                         if (success)
                         {
-                            await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("I have removed the server from the list of allowed server IDs.").AsEphemeral());
+                            await Task.WhenAll(
+                                ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("I have removed the server from the list of allowed server IDs.").AsEphemeral()).AsTask(),
+                                glueRepo.RemoveServer(server_id)
+                            );
                         }
                         else
                         {
-                            await logger.LogError("Error during Server Disallow Command.", ctx, ex);
-                            await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent($"An error occured during the removing of that server ID").AsEphemeral());
+                            await Task.WhenAll(
+                                logger.LogError("Error during Server Disallow Command.", ctx, ex),
+                                ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent($"An error occured during the removing of that server ID").AsEphemeral()).AsTask()
+                            );
                         }
                         return;
                     }
@@ -149,8 +163,10 @@ namespace ElmerBot.Repositories
             }
             catch (Exception ex)
             {
-                await logger.LogError("Error during Server Disallow Command.", ctx, ex);
-                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occured during the removing of that server ID.").AsEphemeral());
+                await Task.WhenAll(
+                    logger.LogError("Error during Server Disallow Command.", ctx, ex),
+                    ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occured during the removing of that server ID.").AsEphemeral()).AsTask()
+                );
             }
         }
     }

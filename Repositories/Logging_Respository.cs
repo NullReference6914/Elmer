@@ -12,7 +12,7 @@ namespace ElmerBot.Repositories
     internal interface ILogging_Repository
     {
         Task LogBasic(string section, string msg);
-        Task LogError(string Error, CommandContext Context = null!, Exception Exception = null!, List<string>? FormatFixes = null);
+        Task LogError(string Error, CommandContext Context = null!, Exception Exception = null!);
         Task LogError(string Error, DiscordGuild Guild, Exception Exception = null!);
     }
     internal class Logging_Repository : ILogging_Repository, IDisposable
@@ -21,11 +21,9 @@ namespace ElmerBot.Repositories
         Settings settings => _config.Value ?? _settings;
         Settings _settings;
 
-        List<string> msgs = [],
-            errorMsgs = [];
+        List<string> msgs = [];
 
-        bool processingMsgs,
-            processingErrorMsgs;
+        bool processingMsgs;
 
         System.Timers.Timer logTimer;
         private bool disposedValue;
@@ -36,12 +34,7 @@ namespace ElmerBot.Repositories
 
             this.logTimer = new System.Timers.Timer(2000);
             this.logTimer.AutoReset = true;
-            this.logTimer.Elapsed += async (sender, e) => await Task.WhenAll(
-                [
-                    PostMessages()
-                    , PostErrorMessages()
-                ]
-            );
+            this.logTimer.Elapsed += async (sender, e) => await PostMessages();
             this.logTimer.Start();
         }
 
@@ -60,28 +53,23 @@ namespace ElmerBot.Repositories
             {
                 this.processingMsgs = true;
 
-                string msg = "";
-
-                List<string> msgs_copy = new List<string>(this.msgs);
-
-                for (int i = 0; i < msgs_copy.Count; i++)
+                try
                 {
-                    string message = msgs_copy[i];
+                    string msg = "";
 
-                    string newMsg = ((!String.IsNullOrEmpty(msg)) ? "\r\n" : "") + message;
-                    if (msg.Length + newMsg.Length > 2000)
+                    do
                     {
-                        i = msgs_copy.Count;
-                    }
-                    else
-                    {
-                        msgs.Remove(message);
-                        msg += newMsg;
-                    }
-                }
+                        string newMsg = msgs.First();
+                        msg += ((msg.Length > 0) ? "\r\n" : "") + newMsg;
+                        msgs.Remove(newMsg);
+                    } while (msgs.Count > 0 && (msg + "\r\n" + msgs.FirstOrDefault()).Length < 2000);
 
-                if (msg.Length > 0)
                     await this.SendMessage("Event Logging", msg, this.settings.Admin.ChannelID);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Error posting log message");
+                }
 
                 processingMsgs = false;
             }
@@ -119,11 +107,8 @@ namespace ElmerBot.Repositories
         }
 
         public async Task LogError(string Error, DiscordGuild guild, Exception ex = null!) => await LogError($"Error Server {guild.Name}, ID: {guild.Id}. {Error}", Exception: ex);
-        public async Task LogError(string Error, CommandContext Context = null!, Exception Exception = null!, List<string>? FormatFixes = null)
+        public async Task LogError(string Error, CommandContext Context = null!, Exception Exception = null!)
         {
-            FormatFixes ??= [];
-            FormatFixes = [.. FormatFixes, "### Main Error Information", "**Stack Trace**", "**Error**"];
-
             Log.Error(Exception, Error);
             string newline = "\r\n";
             string errormsg = "";
@@ -131,22 +116,9 @@ namespace ElmerBot.Repositories
             if (Exception is not null)
                 errormsg = ((Exception.InnerException is not null) ? newline + "### Inner Error Information" + newline + newline + Exception.InnerException.GetType().FullName + " - " + Exception.InnerException.Message + newline + newline + "**Stack Trace** - " + Exception.InnerException.StackTrace?.Trim().Substring(3) : "") + newline + "### Main Error Information" + newline + newline + Exception.GetType().FullName + " - " + Exception.Message + ((!String.IsNullOrEmpty(Exception.StackTrace)) ? newline + newline + "**Stack Trace** - " + Exception.StackTrace.Trim().Substring(3) : "");
 
-            errormsg = Error + newline + ((Context is not null) ? $"Server: {Context.Guild?.Name}, {Context.Guild?.Id}" + newline + $"User: {Context.User?.GlobalName}, {Context.User?.Id}" + newline : "") + errormsg;
+            errormsg = Error + newline + ((Context is not null) ? $"Server: {Context.Guild?.Name}, {Context.Guild?.Id}" + newline + $"User: {Context.User?.GlobalName}, {Context.User?.Id}" + newline : "") + "```" + errormsg + "```";
 
-            List<string> prefixFormat = [.. FormatFixes];
-
-            new List<string>(["_", "*", "#", "-", "`", ">"])
-                .ForEach(c =>
-                {
-                    errormsg = errormsg.Replace(c, $"\\{c}");
-                    prefixFormat = [.. prefixFormat.Select(f => f.Replace(c, $"\\{c}"))];
-                });
-
-            for (int i = 0; i < prefixFormat.Count; i++)
-                if (errormsg.Contains(prefixFormat[i]))
-                    errormsg = errormsg.Replace(prefixFormat[i], FormatFixes[i]);
-
-            errormsg = $"{DateTime.Now.ToDiscordDisplay(TimeFormat.LongTime)} **[### ERROR ###]** - " + errormsg;
+            errormsg = $"{DateTime.Now.ToDiscordDisplay(TimeFormat.LongTime)} **[### ERROR ###]**" + newline + errormsg;
 
             string msg = "";
             errormsg.Split(newline)
@@ -155,48 +127,15 @@ namespace ElmerBot.Repositories
                {
                    if (msg.Length + m.Length + newline.Length > 2000)
                    {
-                       errorMsgs.Add(msg);
+                       msgs.Add(msg);
                        msg = "";
                    }
                    msg += ((!String.IsNullOrEmpty(msg)) ? newline : "") + m;
                });
 
             if (!String.IsNullOrEmpty(msg))
-                errorMsgs.Add(msg);
+                msgs.Add(msg);
         }
-
-        async Task PostErrorMessages()
-        {
-            if (!this.processingErrorMsgs)
-            {
-                this.processingErrorMsgs = true;
-
-                if (errorMsgs.Count > 0)
-                {
-                    try
-                    {
-                        string msg = "";
-
-                        do
-                        {
-                            string newMsg = errorMsgs.First();
-                            msg += ((msg.Length > 0) ? "\r\n" : "") + newMsg;
-                            errorMsgs.Remove(newMsg);
-                        } while (errorMsgs.Count > 0 && (msg + "\r\n" + errorMsgs.FirstOrDefault()).Length < 2000);
-
-                        await this.SendMessage("Error Message", msg, this.settings.Admin.ChannelID);
-                        await Task.Delay(1000);
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Error(ex, "Error posting error log message");
-                    }
-                }
-
-                this.processingErrorMsgs = false;
-            }
-        }
-
 
 
         protected virtual void Dispose(bool disposing)

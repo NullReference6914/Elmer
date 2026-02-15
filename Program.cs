@@ -55,6 +55,7 @@ namespace ElmerBot
             DiscordClientBuilder builder = DiscordClientBuilder
                 .CreateDefault(settings.Token, DiscordIntents.GuildWebhooks
                     | DiscordIntents.GuildMessages
+                    | DiscordIntents.Guilds
                     | SlashCommandProcessor.RequiredIntents)
                 .ConfigureLogging(l => l.AddProvider(new SerilogLoggerProvider(Log.Logger, true)).SetMinimumLevel(LogLevel.Warning))
                 .UseCommands((IServiceProvider serviceProvider, CommandsExtension extension) =>
@@ -80,8 +81,10 @@ namespace ElmerBot
                     services.AddSingleton<ILogging_Repository, Logging_Repository>();
                 })
                 .ConfigureEventHandlers(e =>
-                    e.HandleMessageCreated((c, e) => c.ServiceProvider.GetService<IGlue_Repository>()?.ProcessMessageCreated(c, e)!)
-                        .HandleGuildAvailable((c, e) => c.ServiceProvider.GetService<IGlue_Repository>()?.ProcessGuildAvailable(c, e.Guild)!)
+                    e.HandleMessageCreated((c, e) => c.ServiceProvider.GetService<IGlue_Repository>()?.Process_MessageCreated(c, e)!)
+                        .HandleGuildAvailable((c, e) => c.ServiceProvider.GetService<IGlue_Repository>()?.Process_GuildAvailable(c, e.Guild)!)
+                        .HandleGuildDownloadCompleted((c,e) => c.ServiceProvider.GetService<IGlue_Repository>()?.Process_GuildDownloadCompleted(c,e)!)
+                        .HandleChannelDeleted((c,e) => c.ServiceProvider.GetService<IGlue_Repository>()?.Process_ChannelDeleted(c, e)!)
                 );
 
             try 

@@ -1,6 +1,7 @@
 using DSharpPlus;
 using DSharpPlus.Commands.Processors.SlashCommands;
 using DSharpPlus.Entities;
+using DSharpPlus.EventArgs;
 using ElmerBot.Models;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
@@ -14,13 +15,16 @@ namespace ElmerBot.Repositories
         Task GlueMessage(SlashCommandContext ctx, string message, ulong channelId);
         Task UnglueMessage(SlashCommandContext ctx, ulong channelId);
         Task ViewStickys(SlashCommandContext ctx);
+        Task RemoveServer(ulong serverID);
 
         void Save();
         ConcurrentDictionary<string, GluedMessage> GetMessages();
 
-        Task ProcessMessageCreated(DiscordClient c, DSharpPlus.EventArgs.MessageCreatedEventArgs e);
-        Task ProcessGuildAvailable(DiscordClient c, DiscordGuild guild);
-        Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null);
+        Task Process_MessageCreated(DiscordClient c, DSharpPlus.EventArgs.MessageCreatedEventArgs e);
+        Task Process_GuildAvailable(DiscordClient c, DiscordGuild guild);
+        Task Process_Sticky(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null);
+        Task Process_GuildDownloadCompleted(DiscordClient c, GuildDownloadCompletedEventArgs e);
+        Task Process_ChannelDeleted(DiscordClient c, ChannelDeletedEventArgs e);
     }
     internal class Glue_Repository(IOptionsSnapshot<Settings> _config, ILogging_Repository logger) : IGlue_Repository
     {
@@ -66,7 +70,7 @@ namespace ElmerBot.Repositories
                         catch (IOException) { }
                         catch (Exception ex)
                         {
-                            await logger.LogError($"Error saving glued messages", Exception: ex);
+                            await logger.LogError($"Error saving stickys", Exception: ex);
                         }
                 };
                 saveTimer.Start();
@@ -128,7 +132,10 @@ namespace ElmerBot.Repositories
                     if (msgs.TryUpdate($"{ctx.Guild!.Id}_{channelId}", new GluedMessage(msg) { Message = message }, msg))
                     {
                         needSave = true;
-                        await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The message content has been updated.").AsEphemeral());
+                        await Task.WhenAll(
+                            ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The message content has been updated.").AsEphemeral()).AsTask(),
+                            Process_Sticky(ctx.Client, ctx.Guild!, chnl)
+                        );
                     }
                     else
                     {
@@ -147,15 +154,18 @@ namespace ElmerBot.Repositories
 
                     needSave = true;
 
-                    await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The message is now glued.").AsEphemeral());
-
-                    await ProcessMessageCreated(ctx.Client, ctx.Guild, chnl);
+                    await Task.WhenAll(
+                        ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The message is now glued.").AsEphemeral()).AsTask(),
+                        Process_Sticky(ctx.Client, ctx.Guild, chnl)
+                    );
                 }
             }
             catch (Exception ex)
             {
-                await logger.LogError($"Error during glue command", ctx, ex);
-                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occurred while trying to glue the message.").AsEphemeral());
+                await Task.WhenAll(
+                    logger.LogError($"Error during glue command", ctx, ex),
+                    ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occurred while trying to glue the message.").AsEphemeral()).AsTask()
+                );
             }
         }
 
@@ -163,7 +173,7 @@ namespace ElmerBot.Repositories
         {
             try
             {
-                if (msgs.Remove($"{ctx.Guild!.Id}_{channelId}", out GluedMessage msg))
+                if (msgs.Remove($"{ctx.Guild!.Id}_{channelId}", out var msg))
                 {
                     needSave = true;
 
@@ -185,8 +195,10 @@ namespace ElmerBot.Repositories
             }
             catch (Exception ex)
             {
-                await logger.LogError($"Error during unglue command", ctx, ex);
-                await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occurred while trying to unglue the message.").AsEphemeral());
+                await Task.WhenAll(
+                    logger.LogError($"Error during unglue command", ctx, ex),
+                    ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occurred while trying to unglue the message.").AsEphemeral()).AsTask()
+                );
             }
         }
 
@@ -214,15 +226,50 @@ namespace ElmerBot.Repositories
             }
         }
 
+        public async Task RemoveServer(ulong serverID)
+        {
+            List<string> invalidServerKeys = [.. msgs.Keys];
+
+            if (invalidServerKeys.Count != 0)
+                invalidServerKeys = [.. invalidServerKeys.Where(k => !k.StartsWith(serverID.ToString()))];
+
+            if (invalidServerKeys.Count != 0)
+            {
+                foreach (var key in invalidServerKeys)
+                    msgs.Remove(key, out _);
+
+                needSave = true;
+            }
+        }
+
         #region Processing Methods
 
-        public async Task ProcessMessageCreated(DiscordClient c, DSharpPlus.EventArgs.MessageCreatedEventArgs e) => await ProcessMessageCreated(c, e.Guild, e.Channel, e.Message);
+        public async Task Process_GuildDownloadCompleted(DiscordClient c, GuildDownloadCompletedEventArgs e)
+        {
+            List<string> invalidServerKeys = [.. msgs.Keys];
 
-        public async Task ProcessGuildAvailable(DiscordClient c, DiscordGuild guild) 
+            if (invalidServerKeys.Count != 0)
+                await foreach (var g in c.GetGuildsAsync())
+                    invalidServerKeys = [.. invalidServerKeys.Where(k => !k.StartsWith(g.Id.ToString()))];
+
+            if (invalidServerKeys.Count != 0)
+            {
+                List<string> servers = [..invalidServerKeys.Select(k => k.Split("_")[0]).Distinct()];
+                _ = logger.LogBasic("Auto Clean", $"Automatically cleaning invalid servers ({servers.Count}), stickys ({invalidServerKeys.Count}).\r\n- " + String.Join("\r\n- ", servers));
+                foreach (var key in invalidServerKeys)
+                    msgs.Remove(key, out _);
+
+                needSave = true;
+            }
+        }
+
+        public async Task Process_GuildAvailable(DiscordClient c, DiscordGuild guild)
         {
             _ = Task.Run(async () =>
             {
-                _ = logger.LogBasic("Processing Guild Available", $"Server: {guild.Name} ({guild.Id})");
+                _ = logger.LogBasic("Guild Available", $"Server: {guild.Name} ({guild.Id})");
+
+                List<Task> tasks = [];
 
                 foreach (var key in msgs.Keys.Where(k => k.StartsWith($"{guild.Id}_")))
                     if (msgs.TryGetValue(key, out var msg))
@@ -235,12 +282,12 @@ namespace ElmerBot.Repositories
                             {
                                 if (msgs.TryGetValue(key, out var gluedMessage))
                                     msgs.TryUpdate(key, new GluedMessage(gluedMessage) { Channel_Errors = msg.Channel_Errors + 1 }, gluedMessage);
-                                _ = logger.LogError($"Failed to access channel for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                                _ = logger.LogError($"Failed to access channel for sticky.\r\n**Server**: {guild.Name} ({guild.Id})\r\n**Channel ID**: {msg.Channel_ID}");
                             }
                             else
                             {
                                 msgs.Remove($"{msg.Server_ID}_{msg.Channel_ID}", out _);
-                                _ = logger.LogError($"Failed to access channel for glued message after multiple attempts. Removing glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                                _ = logger.LogError($"Failed to access channel for sticky after multiple attempts. Removing sticky.\r\n**Server**: {guild.Name} ({guild.Id})\r\n**Channel ID**: {msg.Channel_ID}");
                             }
 
                             needSave = true;
@@ -253,13 +300,27 @@ namespace ElmerBot.Repositories
 
                             catch { }
 
-                            await ProcessMessageCreated(c, guild, chnl, lastMsg);
-                       }
+                            tasks.Add(Process_Sticky(c, guild, chnl, lastMsg));
+                        }
                     }
+
+                await Task.WhenAll(tasks);
             });
         }
 
-        public async Task ProcessMessageCreated(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null)
+        public async Task Process_ChannelDeleted(DiscordClient c, ChannelDeletedEventArgs e)
+        {
+            if (msgs.Remove($"{e.Guild!.Id}_{e.Channel.Id}", out _))
+            {
+                needSave = true;
+                await logger.LogBasic("Auto Clean", $"Sticky automatically deleted as channel was deleted.\r\n**Server**: {e.Guild.Name} ({e.Guild.Id})\r\n**Channel**: \\#{e.Channel.Name} ({e.Channel.Id})");
+            }
+        }
+
+        public async Task Process_MessageCreated(DiscordClient c, MessageCreatedEventArgs e) => await Process_Sticky(c, e.Guild, e.Channel, e.Message);
+
+
+        public async Task Process_Sticky(DiscordClient c, DiscordGuild guild, DiscordChannel channel, DiscordMessage? m = null)
         {
             try
             {
@@ -268,7 +329,7 @@ namespace ElmerBot.Repositories
                     if (msgs.TryGetValue(msgKey, out var message))
                         if ((m is null || m.Id != message.Message_ID) && !message.isWatching)
                         {
-                            _ = logger.LogBasic("Processing Glued Message", $"Server: {guild.Name} ({guild.Id}) - Channel: #{channel.Name} ({channel.Id})");
+                            _ = logger.LogBasic("Processing Sticky", $"**Server**: {guild.Name} ({guild.Id}) - **Channel**: \\#{channel.Name} ({channel.Id})");
 
                             msgs.TryUpdate(msgKey, new GluedMessage(message) { isWatching = true }, message);
                             needSave = true;
@@ -321,12 +382,12 @@ namespace ElmerBot.Repositories
                                             {
                                                 if (msgs.TryGetValue(msgKey, out var hookErrorMsg))
                                                     msgs.TryUpdate(msgKey, new GluedMessage(hookErrorMsg) { Webhook_Errors = msg.Webhook_Errors + 1 }, hookErrorMsg);
-                                                _ = logger.LogError($"Failed to generate a webhook for glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                                                _ = logger.LogError($"Failed to generate a webhook for sticky.\r\n**Server**: {guild.Name} ({guild.Id})\r\n**Channel:** \\#{channel.Name} ({channel.Id})");
                                             }
                                             else
                                             {
                                                 msgs.Remove($"{msg.Server_ID}_{msg.Channel_ID}", out _);
-                                                _ = logger.LogError($"Failed to generate a webhook for glued message after multiple attempts. Removing glued message. Server: {guild.Name} ({guild.Id}) - Channel ID: {msg.Channel_ID}");
+                                                _ = logger.LogError($"Failed to generate a webhook for sticky after multiple attempts. Removing sticky.\r\n**Server**: {guild.Name} ({guild.Id})\r\n**Channel**: \\#{channel.Name} ({channel.Id})");
                                             }
                                         }
 
@@ -352,11 +413,11 @@ namespace ElmerBot.Repositories
                                                     , successfulMessage
                                                 );
 
-                                            _ = logger.LogBasic("Hook Submitted", $"Server: {channel.Guild.Name} ({channel.Guild.Id}) - #{channel.Name} ({channel.Id})");
+                                            _ = logger.LogBasic("Hook Submitted", $"**Server**: {channel.Guild.Name} ({channel.Guild.Id}) - \\#{channel.Name} ({channel.Id})");
                                         }
                                         catch (Exception ex)
                                         {
-                                            _ = logger.LogError($"Error during webhook submission. Server: {guild.Name} ({guild.Id}) - Channel: #{channel.Name} ({channel.Id})", guild, ex);
+                                            _ = logger.LogError($"Error during webhook submission.\r\n**Server**: {guild.Name} ({guild.Id})\r\n**Channel:** \\#{channel.Name} ({channel.Id})", guild, ex);
                                         }
 
                                     if (msgs.TryGetValue(msgKey, out var gluedMessage))
@@ -365,13 +426,13 @@ namespace ElmerBot.Repositories
                                 }
                                 catch (Exception ex)
                                 {
-                                    _ = logger.LogError($"Error during processing of glued message. Server: {guild.Name} ({guild.Id}) - Channel: #{channel.Name} ({channel.Id})", guild, ex);
+                                    _ = logger.LogError($"Error during processing of sticky.\r\n**Server**: {guild.Name} ({guild.Id})\r\n**Channel**: \\#{channel.Name} ({channel.Id})", guild, ex);
                                 }
                         }
             }
             catch (Exception ex)
             {
-                await logger.LogError($"Error during processing of message created event", Exception: ex);
+                await logger.LogError($"Error during processing of message created event\r\n**Server**: {guild.Name} ({guild.Id})\r\n**Channel**: \\#{channel.Name} ({channel.Id})", Exception: ex);
             }
         }
 
