@@ -266,6 +266,22 @@ namespace ElmerBot.Repositories
             }
         }
 
+        public async Task RemoveServer(ulong serverID)
+        {
+            List<string> invalidServerKeys = [.. msgs.Keys];
+
+            if (invalidServerKeys.Count != 0)
+                invalidServerKeys = [.. invalidServerKeys.Where(k => !k.StartsWith(serverID.ToString()))];
+
+            if (invalidServerKeys.Count != 0)
+            {
+                foreach (var key in invalidServerKeys)
+                    msgs.Remove(key, out _);
+
+                needSave = true;
+            }
+        }
+
         #region Processing Methods
 
         public async Task Process_GuildDownloadCompleted(DiscordClient c, GuildDownloadCompletedEventArgs e)
