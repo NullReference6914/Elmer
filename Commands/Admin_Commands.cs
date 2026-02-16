@@ -49,7 +49,7 @@ namespace ElmerBot.Commands
             [SlashAutoCompleteProvider<ServersProvider>]
             string serverID) => await repo.Server_Disallow(ctx, serverID);
 
-        [Command("view"), Description("View all servers the bot is in")]
+        [Command("view_servers"), Description("View all servers the bot is in")]
         [RequireAdmin]
         public async Task view_servers(SlashCommandContext ctx) => await repo.Server_View(ctx);
 
