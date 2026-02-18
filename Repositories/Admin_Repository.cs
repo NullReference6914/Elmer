@@ -201,7 +201,7 @@ namespace ElmerBot.Repositories
                 string mesage = "";
                 do
                 {
-                    string newMsg = stickyMsgs.First();
+                    string newMsg = serverInfo.First();
                     mesage += ((mesage.Length > 0) ? "\r\n\r\n" : "") + newMsg;
                     serverInfo.Remove(newMsg);
                 } while (serverInfo.Count > 0 && (mesage + "\r\n\r\n" + serverInfo.FirstOrDefault()).Length < 2000);
