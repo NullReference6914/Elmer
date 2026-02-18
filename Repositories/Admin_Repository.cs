@@ -173,6 +173,8 @@ namespace ElmerBot.Repositories
 
         public async Task Server_View(SlashCommandContext ctx)
         {
+            try
+            {
             List<string> serverInfo = [];
 
             await foreach(var server in ctx.Client.GetGuildsAsync())
@@ -191,6 +193,31 @@ namespace ElmerBot.Repositories
 > **Enabled**: :{((settings.EnabledServers.Contains(server.Id)) ? "white_check_mark" : "x")}:
 > **Owner**: {owner?.DisplayName} ({owner?.Id})
 > **Stats**: Users ( {memberCount} :man_technologist: / {botCount} :robot: ) Chanenls ( {categories} :open_file_folder: / {textChannels} :hash: / {vcs} :microphone: )");
+            }
+        
+            await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("Below are the servers which I am currently in."));
+            do
+            {
+                string mesage = "";
+                do
+                {
+                    string newMsg = stickyMsgs.First();
+                    mesage += ((mesage.Length > 0) ? "\r\n\r\n" : "") + newMsg;
+                    serverInfo.Remove(newMsg);
+                } while (serverInfo.Count > 0 && (mesage + "\r\n\r\n" + serverInfo.FirstOrDefault()).Length < 2000);
+
+                await ctx.Channel.SendMessageAsync(mesage);
+
+                if(serverInfo.Count > 0)
+                    await Task.Delay(2000);
+            } while (serverInfo.Count > 0);
+            }
+            catch (Exception ex)
+            {
+                await Task.WhenAll(
+                    logger.LogError("Error during Server View Command.", ctx, ex),
+                    ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occured during the viewing of server information.").AsEphemeral()).AsTask()
+                );
             }
         }
     }
