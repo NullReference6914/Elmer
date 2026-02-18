@@ -1,8 +1,6 @@
 ﻿using DSharpPlus.Commands.Processors.SlashCommands;
 using DSharpPlus.Entities;
 using ElmerBot.Classes;
-using ElmerBot.Models;
-using Microsoft.Extensions.Options;
 
 namespace ElmerBot.Repositories
 {
@@ -19,9 +17,9 @@ namespace ElmerBot.Repositories
         {
             try
             {
-                if (await vault.TryGetValue($"{ctx.Guild!.Id}_{channelId}") is (bool getSuccess, GluedMessage msg) && getSuccess)
+                if (await vault.TryGetValue($"{ctx.Guild!.Id}_{channelId}") is (true, _))
                 {
-                    await vault.TryUpdate($"{ctx.Guild!.Id}_{channelId}", new(msg) { Avatar_Url = url }, msg);
+                    await vault.TryUpdate($"{ctx.Guild!.Id}_{channelId}", (ref m) => { m.Avatar_Url = url; });
                     await Task.WhenAll(
                         ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The pfp has been set.").AsEphemeral()).AsTask(),
                         glueRepo.Process_Sticky(ctx.Client, ctx.Guild!, ctx.Channel)
@@ -45,9 +43,9 @@ namespace ElmerBot.Repositories
         {
             try
             {
-                if (await vault.TryGetValue($"{ctx.Guild!.Id}_{channelId}") is (bool getSuccess, GluedMessage msg) && getSuccess)
+                if (await vault.TryGetValue($"{ctx.Guild!.Id}_{channelId}") is (true, _))
                 {
-                    await vault.TryUpdate($"{ctx.Guild!.Id}_{channelId}", new(msg) { Username = username }, msg); 
+                    await vault.TryUpdate($"{ctx.Guild!.Id}_{channelId}", (ref m) => { m.Username = username; }); 
                     await Task.WhenAll(
                         ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("The username has been set.").AsEphemeral()).AsTask(),
                         glueRepo.Process_Sticky(ctx.Client, ctx.Guild!, ctx.Channel)

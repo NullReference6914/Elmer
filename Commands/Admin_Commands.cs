@@ -16,11 +16,11 @@ namespace ElmerBot.Commands
     {
         [Command("hi"), Description("General bot responsiveness test command")]
         [RequireAdmin]
-        public async Task Hi(SlashCommandContext ctx) => await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent($"👋 Hi, {ctx.User.Username}!").AsEphemeral());
+        public static async Task Hi(SlashCommandContext ctx) => await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent($"👋 Hi, {ctx.User.Username}!").AsEphemeral());
 
         [Command("members"), Description("Build a list of members from a role")]
         [CustomRequirePermissions(userPermissions: [DiscordPermission.ManageMessages])]
-        public async Task members(SlashCommandContext ctx,
+        public async Task Members(SlashCommandContext ctx,
             [Parameter("Role")] 
             DiscordRole primaryRole,
             [Parameter("Output_Type")]
@@ -30,28 +30,28 @@ namespace ElmerBot.Commands
 
         [Command("leave"), Description("Force the bot to leave a server")]
         [RequireAdmin]
-        public async Task leave_server(SlashCommandContext ctx,
+        public async Task Server_Leave(SlashCommandContext ctx,
         [Parameter("ServerId"), Description("ID of server")]
             [SlashAutoCompleteProvider<ServersProvider>]
             string serverID) => await repo.Server_Leave(ctx, serverID);
 
         [Command("allow"), Description("Allow a server to use the bot")]
         [RequireAdmin]
-        public async Task allow_server(SlashCommandContext ctx,
+        public async Task Server_Allow(SlashCommandContext ctx,
             [Parameter("ServerId"), Description("ID of server")]
             [SlashAutoCompleteProvider<ServersProvider>]
             string serverID) => await repo.Server_Allow(ctx, serverID);
 
         [Command("disallow"), Description("Revoke a server from using the bot")]
         [RequireAdmin]
-        public async Task disallow_server(SlashCommandContext ctx,
+        public async Task Server_Disallow(SlashCommandContext ctx,
             [Parameter("ServerId"), Description("ID of server")]
             [SlashAutoCompleteProvider<ServersProvider>]
             string serverID) => await repo.Server_Disallow(ctx, serverID);
 
-        [Command("view_servers"), Description("View all servers the bot is in")]
+        [Command("servers"), Description("View all servers the bot is in")]
         [RequireAdmin]
-        public async Task view_servers(SlashCommandContext ctx) => await repo.Server_View(ctx);
+        public async Task Servers_View(SlashCommandContext ctx) => await repo.Server_View(ctx);
 
     }
 }

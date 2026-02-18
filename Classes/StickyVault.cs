@@ -1,52 +1,56 @@
 ﻿using ElmerBot.Models;
 using ElmerBot.Repositories;
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Text;
 using System.Text.Json;
 
 namespace ElmerBot.Classes
 {
     internal class StickyVault(string jsonFolderLocation, ILogging_Repository logger)
     {
-        ConcurrentDictionary<string, GluedMessage> stickys => _stickys ??= Load();
-        ConcurrentDictionary<string, GluedMessage> _stickys;
-        System.Timers.Timer saveTimer;
+        public delegate void Modify_GluedMessage(ref GluedMessage value);
+
+        ConcurrentDictionary<string, GluedMessage> Stickys => _stickys ??= Load();
+        ConcurrentDictionary<string, GluedMessage>? _stickys;
+        System.Timers.Timer? saveTimer;
+
         bool isSaving = false,
             initialLoad = true,
             saveNeeded = false;
         DateTime? lastUpdate = null;
 
-        internal ICollection<string> Keys => stickys.Keys;
+        internal ICollection<string> Keys => Stickys.Keys;
 
         public async Task<(bool success, GluedMessage? sticky)> TryGetValue(string key)
         {
             await WaitForUnlocked();
-            bool success = stickys.TryGetValue(key, out var sticky);
+            bool success = Stickys.TryGetValue(key, out var sticky);
             return (success, sticky);
         }
 
         public async Task<bool> TryAdd(string key, GluedMessage message)
         {
             await WaitForUnlocked();
-            saveNeeded = true;
-            return stickys.TryAdd(key, message);
+            return saveNeeded = Stickys.TryAdd(key, message);
         }
 
-        public async Task<bool> TryUpdate(string key, GluedMessage newSticky, GluedMessage oldSticky)
+        public async Task<bool> TryUpdate(string key, Modify_GluedMessage Modify)
         {
             await WaitForUnlocked();
-            saveNeeded = true;
-            return stickys.TryUpdate(key, newSticky, oldSticky);
+            if (await TryGetValue(key) is (true, GluedMessage sticky))
+            {
+                var updated = new GluedMessage(sticky);
+                Modify(ref updated);
+                return saveNeeded = Stickys.TryUpdate(key, updated, sticky);
+            }
+
+            return false;
         }
 
         public async Task<(bool success, GluedMessage? sticky)> Remove(string key)
         {
             await WaitForUnlocked();
-            saveNeeded = true;
-            bool succes = stickys.Remove(key, out var sticky);
-            return(succes, sticky);
+            saveNeeded = Stickys.Remove(key, out var sticky);
+            return(saveNeeded, sticky);
         }
 
         async Task WaitForUnlocked()
@@ -58,8 +62,10 @@ namespace ElmerBot.Classes
         {
             if (saveTimer is null)
             {
-                saveTimer = new System.Timers.Timer(5000);
-                saveTimer.AutoReset = true;
+                saveTimer = new System.Timers.Timer(5000)
+                {
+                    AutoReset = true
+                };
                 saveTimer.Elapsed += async (s, e) =>
                 {
                     if (saveNeeded)
@@ -90,7 +96,7 @@ namespace ElmerBot.Classes
             {
                 if (!Directory.Exists(jsonFolderLocation))
                     Directory.CreateDirectory(jsonFolderLocation);
-                await File.WriteAllTextAsync(jsonFolderLocation + "list.json", JsonSerializer.Serialize(stickys.Select(m => m.Value).ToList()));
+                await File.WriteAllTextAsync(jsonFolderLocation + "list.json", JsonSerializer.Serialize(Stickys.Select(m => m.Value).ToList()));
 
                 if ((DateTime.Now - (lastUpdate ?? DateTime.Now)).TotalMinutes > 2)
                 {
