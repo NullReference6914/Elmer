@@ -178,42 +178,63 @@ namespace ElmerBot.Repositories
                 await ctx.Interaction.DeferAsync(true);
                 List<string> serverInfo = [];
 
-            await foreach(var server in ctx.Client.GetGuildsAsync())
-            {
-                DiscordMember? owner = await server.GetAllMembersAsync().FirstOrDefaultAsync(m => m.IsOwner);
-                var members = server.GetAllMembersAsync();
-                var channels = await server.GetChannelsAsync();
+                var pullerTask = Task.Run(async () =>
+                {
+                    List<Task> tasks = [];
+                    await foreach (var server in ctx.Client.GetGuildsAsync())
+                        tasks.Add(Task.Factory.StartNew(async () =>
+                        {
+                            var members = server.GetAllMembersAsync();
+                            var owner = server.GetGuildOwnerAsync();
+                            var channels = server.GetChannelsAsync();
 
-                int memberCount = await members.CountAsync(m => !m.IsBot),
-                    botCount = await members.CountAsync(m => m.IsBot),
-                    categories = channels.Count(c => c.IsCategory),
-                    vcs = channels.Count(c => c.Type == DiscordChannelType.Voice),
-                    textChannels = channels.Count(c => !c.IsThread && !c.IsCategory && c.Type == DiscordChannelType.Text);
+                            var memberCount = members.CountAsync(m => !m.IsBot);
+                            var botCount = members.CountAsync(m => m.IsBot);
 
-                serverInfo.Add($@"### {server.Name} ({server.Id}) 
-> **Enabled**: :{((settings.EnabledServers.Contains(server.Id)) ? "white_check_mark" : "x")}:
-> **Owner**: {owner?.DisplayName} ({owner?.Id})
-> **Stats**: Users ( {memberCount} :man_technologist: / {botCount} :robot: ) Chanenls ( {categories} :open_file_folder: / {textChannels} :hash: / {vcs} :microphone: )");
-            }
+                            await channels;
+
+                            int categories = channels.Result.Count(c => c.IsCategory),
+                                vcs = channels.Result.Count(c => c.Type == DiscordChannelType.Voice),
+                                textChannels = channels.Result.Count(c => !c.IsThread && !c.IsCategory && c.Type == DiscordChannelType.Text);
+
+                            await Task.WhenAll(memberCount.AsTask(), botCount.AsTask());
+
+                            await owner;
+
+                            serverInfo.Add($@"### {server.Name} ({server.Id}) 
+>>> **Enabled**: :{((settings.EnabledServers.Contains(server.Id)) ? "white_check_mark" : "x")}:
+**Owner**: {owner.Result.DisplayName} ({owner?.Id})
+**Stats**: Users ( {memberCount.Result} :man_technologist: / {botCount.Result} :robot: ) Channels ( {categories} :open_file_folder: / {textChannels} :hash: / {vcs} :microphone: )
+**Stickys**: {glueRepo.GetMessages().Keys.Count(k => k.StartsWith(server.Id.ToString()))}");
+                        }));
+                    await Task.WhenAll(tasks);
+                });
         
-            await ctx.Interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder()
-                            .WithContent("Below are the servers which I am currently in.")
-                        );
-            do
-            {
-                string mesage = "";
+                await ctx.Interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder()
+                    .WithContent("Below are the servers which I am currently in.")
+                );
+
                 do
                 {
-                    string newMsg = serverInfo.First();
-                    mesage += ((mesage.Length > 0) ? "\r\n\r\n" : "") + newMsg;
-                    serverInfo.Remove(newMsg);
-                } while (serverInfo.Count > 0 && (mesage + "\r\n\r\n" + serverInfo.FirstOrDefault()).Length < 2000);
+                    if (serverInfo.Count == 0 && pullerTask.Status < TaskStatus.RanToCompletion)
+                        await Task.Delay(2000);
 
-                await ctx.Channel.SendMessageAsync(mesage);
+                    if (serverInfo.Count > 0)
+                    {
+                        string mesage = "";
+                        do
+                        {
+                            string newMsg = serverInfo.First();
+                            mesage += ((mesage.Length > 0) ? "\r\n\r\n" : "") + newMsg;
+                            serverInfo.Remove(newMsg);
+                        } while (serverInfo.Count > 0 && (mesage + "\r\n\r\n" + serverInfo.FirstOrDefault()).Length < 2000);
 
-                if(serverInfo.Count > 0)
-                    await Task.Delay(2000);
-            } while (serverInfo.Count > 0);
+                        await ctx.Channel.SendMessageAsync(mesage);
+
+                        if (serverInfo.Count > 0)
+                            await Task.Delay(2000);
+                    }
+                } while (serverInfo.Count > 0 || pullerTask.Status < TaskStatus.RanToCompletion);
             }
             catch (Exception ex)
             {
