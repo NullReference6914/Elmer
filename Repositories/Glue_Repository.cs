@@ -150,7 +150,7 @@ namespace ElmerBot.Repositories
                         string sticky = $@"**Channel**: <#{msg.Channel_ID}> (ID: {msg.Channel_ID}
 **Message**: {msg.Message}";
                         if (msg.Username is not null) sticky += $"\r\n**Username**: {msg.Username}";
-                        if (msg.Avatar_Url is not null) sticky += $"\r\n**Profile Picture**: [{msg.Avatar_Url}]({msg.Avatar_Url})";
+                        if (msg.Avatar_Url is not null) sticky += $"\r\n**Profile Picture**: <{msg.Avatar_Url}>";
 
                         stickyMsgs.Add(sticky);
                     }
@@ -163,9 +163,9 @@ namespace ElmerBot.Repositories
                     do
                     {
                         string newMsg = stickyMsgs.First();
-                        mesage += ((mesage.Length > 0) ? "\r\n" : "") + newMsg;
+                        mesage += ((mesage.Length > 0) ? "\r\n\r\n" : "") + newMsg;
                         stickyMsgs.Remove(newMsg);
-                    } while (stickyMsgs.Count > 0 && (mesage + "\r\n" + stickyMsgs.FirstOrDefault()).Length < 2000);
+                    } while (stickyMsgs.Count > 0 && (mesage + "\r\n\r\n" + stickyMsgs.FirstOrDefault()).Length < 2000);
 
                     await ctx.Channel.SendMessageAsync(mesage);
 
