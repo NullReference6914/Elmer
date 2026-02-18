@@ -290,7 +290,7 @@ namespace ElmerBot.Repositories
                     if (await msgs.TryGetValue(msgKey) is (bool success, GluedMessage message) && success)
                         if ((m is null || m.Id != message.Message_ID) && !message.isWatching)
                         {
-                            _ = logger.LogBasic("Processing Sticky", $"**Server**: {guild.Name} ({guild.Id}) -> \\#{channel.Name} ({channel.Id})");
+                            _ = logger.LogBasic("Processing", $"{guild.Name} ({guild.Id}) -> \\#{channel.Name} ({channel.Id})");
 
                             await msgs.TryUpdate(msgKey, (ref m) => { m.isWatching = true; });
                             await Task.Delay(5 * 1000);
@@ -370,7 +370,7 @@ namespace ElmerBot.Repositories
                                                 }
                                             );
 
-                                            _ = logger.LogBasic("Sticky Posted", $"**Server**: {channel.Guild.Name} ({channel.Guild.Id}) -> \\#{channel.Name} ({channel.Id})");
+                                            _ = logger.LogBasic("Posted", $"{channel.Guild.Name} ({channel.Guild.Id}) -> \\#{channel.Name} ({channel.Id})");
                                         }
                                         catch (Exception ex)
                                         {
