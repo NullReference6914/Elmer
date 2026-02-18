@@ -175,7 +175,8 @@ namespace ElmerBot.Repositories
         {
             try
             {
-            List<string> serverInfo = [];
+                await ctx.Interaction.DeferAsync(true);
+                List<string> serverInfo = [];
 
             await foreach(var server in ctx.Client.GetGuildsAsync())
             {
@@ -195,7 +196,9 @@ namespace ElmerBot.Repositories
 > **Stats**: Users ( {memberCount} :man_technologist: / {botCount} :robot: ) Chanenls ( {categories} :open_file_folder: / {textChannels} :hash: / {vcs} :microphone: )");
             }
         
-            await ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("Below are the servers which I am currently in."));
+            await ctx.Interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder()
+                            .WithContent("Below are the servers which I am currently in.")
+                        );
             do
             {
                 string mesage = "";
