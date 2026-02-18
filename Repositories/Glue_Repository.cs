@@ -150,17 +150,16 @@ namespace ElmerBot.Repositories
                         string sticky = $@"**Channel**: <#{msg.Channel_ID}> (ID: {msg.Channel_ID}
 **Message**: {msg.Message}";
                         if (msg.Username is not null) sticky += $"\r\n**Username**: {msg.Username}";
-                        if (msg.Avatar_Url is not null) sticky += $"\r\n**Profile Picture**: {msg.Avatar_Url}";
+                        if (msg.Avatar_Url is not null) sticky += $"\r\n**Profile Picture**: [{msg.Avatar_Url}]({msg.Avatar_Url})";
 
                         stickyMsgs.Add(sticky);
                     }
 
                 _ = ctx.Interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder() { Content = "Sticky information will display below." });
 
-                string mesage = "";
-
                 do
                 {
+                    string mesage = "";
                     do
                     {
                         string newMsg = stickyMsgs.First();
