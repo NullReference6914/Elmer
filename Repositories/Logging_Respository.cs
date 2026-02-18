@@ -4,7 +4,6 @@ using ElmerBot.Models;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Context;
-using static System.Collections.Specialized.BitVector32;
 
 namespace ElmerBot.Repositories
 {
@@ -17,28 +16,29 @@ namespace ElmerBot.Repositories
     }
     internal class Logging_Repository : ILogging_Repository, IDisposable
     {
-        IOptionsSnapshot<Settings> _config;
-        Settings settings => _config.Value ?? _settings;
-        Settings _settings;
+        readonly IOptionsSnapshot<Settings> _config;
+        Settings Settings => _config.Value;
 
-        List<string> msgs = [];
+        readonly List<string> msgs = [];
 
         bool processingMsgs;
 
-        System.Timers.Timer logTimer;
+        readonly System.Timers.Timer logTimer;
         private bool disposedValue;
 
         public Logging_Repository(IOptionsSnapshot<Settings> config)
         {
             this._config = config;
 
-            this.logTimer = new System.Timers.Timer(2000);
-            this.logTimer.AutoReset = true;
+            this.logTimer = new System.Timers.Timer(2000)
+            {
+                AutoReset = true
+            };
             this.logTimer.Elapsed += async (sender, e) => await PostMessages();
             this.logTimer.Start();
         }
 
-        string GenerateLogType(string type) => " - " + type;
+        static string GenerateLogType(string type) => " - " + type;
 
         public async Task LogBasic(string section, string msg)
         {
@@ -64,7 +64,7 @@ namespace ElmerBot.Repositories
                         msgs.Remove(newMsg);
                     } while (msgs.Count > 0 && (msg + "\r\n" + msgs.FirstOrDefault()).Length < 2000);
 
-                    await this.SendMessage("Event Logging", msg, this.settings.Admin.ChannelID);
+                    await this.SendMessage("Event Logging", msg, this.Settings.Admin.ChannelID);
                 }
                 catch (Exception ex)
                 {
@@ -85,8 +85,8 @@ namespace ElmerBot.Repositories
                     guild = null!;
                     try
                     {
-                        if (this.settings.Admin.ServerID.HasValue)
-                            guild = Program.client?.GetGuildAsync(this.settings.Admin.ServerID.Value)?.Result!;
+                        if (this.Settings.Admin.ServerID.HasValue)
+                            guild = Program.client?.GetGuildAsync(this.Settings.Admin.ServerID.Value)?.Result!;
                     }
                     catch { }
 
@@ -110,27 +110,26 @@ namespace ElmerBot.Repositories
         public async Task LogError(string Error, CommandContext Context = null!, Exception Exception = null!)
         {
             Log.Error(Exception, Error);
-            string newline = "\r\n";
             string errormsg = "";
 
             if (Exception is not null)
-                errormsg = ((Exception.InnerException is not null) ? newline + "### Inner Error Information" + newline + newline + Exception.InnerException.GetType().FullName + " - " + Exception.InnerException.Message + newline + newline + "**Stack Trace** - " + Exception.InnerException.StackTrace?.Trim().Substring(3) : "") + newline + "### Main Error Information" + newline + newline + Exception.GetType().FullName + " - " + Exception.Message + ((!String.IsNullOrEmpty(Exception.StackTrace)) ? newline + newline + "**Stack Trace** - " + Exception.StackTrace.Trim().Substring(3) : "");
+                errormsg = ((Exception.InnerException is not null) ? "\r\n### Inner Error Information\r\n\r\n" + Exception.InnerException.GetType().FullName + " - " + Exception.InnerException.Message + "\r\n\r\n**Stack Trace** ```" + Exception.InnerException.StackTrace?.Trim()[3..] + "```" : "") + "\r\n### Main Error Information\r\n\r\n" + Exception.GetType().FullName + " - " + Exception.Message + ((!String.IsNullOrEmpty(Exception.StackTrace)) ? "\r\n\r\n**Stack Trace** ```" + Exception.StackTrace.Trim()[3..] + "```" : "");
 
-            errormsg = Error + newline + ((Context is not null) ? $"Server: {Context.Guild?.Name}, {Context.Guild?.Id}" + newline + $"User: {Context.User?.GlobalName}, {Context.User?.Id}" + newline : "") + "```" + errormsg + "```";
+            errormsg = $"\r\n{Error}\r\n" + ((Context is not null) ? $"\r\n**Server**: {Context.Guild?.Name}, {Context.Guild?.Id}\r\n**User**: \\@{Context.User?.GlobalName} ({Context.User?.Username}), {Context.User?.Id}\r\n**Channel**: \\#{Context.Channel.Name}, {Context.Channel.Id}\r\n" : "") + errormsg;
 
-            errormsg = $"{DateTime.Now.ToDiscordDisplay(TimeFormat.LongTime)} **[### ERROR ###]**" + newline + errormsg;
+            errormsg = $"{DateTime.Now.ToDiscordDisplay(TimeFormat.LongTime)} **[### ERROR ###]**\r\n" + errormsg;
 
             string msg = "";
-            errormsg.Split(newline)
+            errormsg.Split("\r\n\r\n")
                .ToList()
                .ForEach(m =>
                {
-                   if (msg.Length + m.Length + newline.Length > 2000)
+                   if ($"{msg}{m}\r\n\r\n".Length > 2000)
                    {
                        msgs.Add(msg);
                        msg = "";
                    }
-                   msg += ((!String.IsNullOrEmpty(msg)) ? newline : "") + m;
+                   msg += ((!String.IsNullOrEmpty(msg)) ? "\r\n\r\n" : "") + m;
                });
 
             if (!String.IsNullOrEmpty(msg))
