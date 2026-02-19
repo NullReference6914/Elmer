@@ -3,6 +3,8 @@ using DSharpPlus.Entities;
 using ElmerBot.Enums;
 using ElmerBot.Models;
 using Microsoft.Extensions.Options;
+using System.Collections.Concurrent;
+using System.Diagnostics.Metrics;
 
 namespace ElmerBot.Repositories
 {
@@ -173,24 +175,113 @@ namespace ElmerBot.Repositories
 
         public async Task Server_View(SlashCommandContext ctx)
         {
-            List<string> serverInfo = [];
-
-            await foreach(var server in ctx.Client.GetGuildsAsync())
+            try
             {
-                DiscordMember? owner = await server.GetAllMembersAsync().FirstOrDefaultAsync(m => m.IsOwner);
-                var members = server.GetAllMembersAsync();
-                var channels = await server.GetChannelsAsync();
+                await ctx.RespondAsync("Obtaining server list...", true);
 
-                int memberCount = await members.CountAsync(m => !m.IsBot),
-                    botCount = await members.CountAsync(m => m.IsBot),
-                    categories = channels.Count(c => c.IsCategory),
-                    vcs = channels.Count(c => c.Type == DiscordChannelType.Voice),
-                    textChannels = channels.Count(c => !c.IsThread && !c.IsCategory && c.Type == DiscordChannelType.Text);
+                ConcurrentBag<string> serverInfo = [];
+                List<DiscordGuild> guilds = [];
 
-                serverInfo.Add($@"### {server.Name} ({server.Id}) 
+                await foreach (var server in ctx.Client.GetGuildsAsync(withCount: true))
+                    guilds.Add(server);
+
+                var pullerTask = Task.Run(async () =>
+                {
+                    List<Task> tasks = [];
+
+                    foreach (var server in guilds.OrderByDescending(g => g.MemberCount))
+                        tasks.Add(Task.Factory.StartNew(async () =>
+                        {
+                            try
+                            {
+                                var members = server.GetAllMembersAsync();
+                                var channels = server.GetChannelsAsync();
+
+                                var owner = members.FirstAsync(m => m.IsOwner);
+                                var memberCount = members.CountAsync(m => !m.IsBot);
+                                var botCount = members.CountAsync(m => m.IsBot);
+
+                                await channels;
+
+                                int categories = channels.Result.Count(c => c.IsCategory),
+                                    vcs = channels.Result.Count(c => c.Type == DiscordChannelType.Voice),
+                                    textChannels = channels.Result.Count(c => !c.IsThread && !c.IsCategory && c.Type == DiscordChannelType.Text);
+
+                                await Task.WhenAll(memberCount.AsTask(), botCount.AsTask(), owner.AsTask());
+
+                                serverInfo.Add($@"### {server.Name} ({server.Id}) 
 > **Enabled**: :{((settings.EnabledServers.Contains(server.Id)) ? "white_check_mark" : "x")}:
-> **Owner**: {owner?.DisplayName} ({owner?.Id})
-> **Stats**: Users ( {memberCount} :man_technologist: / {botCount} :robot: ) Chanenls ( {categories} :open_file_folder: / {textChannels} :hash: / {vcs} :microphone: )");
+> **Owner**: {owner.Result.DisplayName} ({owner.Result.Id})
+> **Stats**: Users ( {memberCount.Result} :man_technologist: / {botCount.Result} :robot: ) Channels ( {categories} :open_file_folder: / {textChannels} :hash: / {vcs} :microphone: )
+> **Stickys**: {glueRepo.GetMessages().Keys.Count(k => k.StartsWith(server.Id.ToString()))}");
+
+                                guilds.Remove(server);
+                            }
+                            catch(Exception ex)
+                            {
+                                await logger.LogError($"Error during server info for {server.Name} ({server.Id})", ctx, ex);
+                            }
+                        }).Unwrap());
+                    await Task.WhenAll(tasks);
+                });
+
+                _ = Task.Factory.StartNew(async() =>
+                {
+                    int counter = 0;
+                    while (pullerTask.Status < TaskStatus.RanToCompletion)
+                    {
+                        await ctx.Interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder()
+                            .WithContent($"Processing {guilds.Count} servers{new string('.', ++counter % 4)}\r\n\r\nInformation will begin posting as its available.")
+                        );
+                        await Task.Delay(1000);
+                    }
+                });
+
+                do
+                {
+                    if (!serverInfo.IsEmpty)
+                    {
+                        string message = "";
+                        do
+                        {
+                            if (serverInfo.TryTake(out string? newMsg) && newMsg is not null)
+                            {
+                                if((message + "\r\n" + newMsg).Length < 2000)
+                                {
+                                    message += ((message.Length > 0) ? "\r\n" : "") + newMsg;
+                                }
+                                else
+                                {
+                                    await ctx.Channel.SendMessageAsync(message);
+                                    await Task.Delay(2000);
+                                }
+                            }
+                        } while (!serverInfo.IsEmpty);
+
+                        if (!String.IsNullOrEmpty(message))
+                        {
+                            await ctx.Channel.SendMessageAsync(message); 
+                            if(pullerTask.Status < TaskStatus.RanToCompletion)
+                                await Task.Delay(2000);
+                        }                            
+                    }
+                    else if (pullerTask.Status < TaskStatus.RanToCompletion)
+                    {
+                        await Task.Delay(2000);
+                    }
+                } while (pullerTask.Status < TaskStatus.RanToCompletion || !serverInfo.IsEmpty);
+
+
+                await ctx.Interaction.EditOriginalResponseAsync(new DiscordWebhookBuilder()
+                    .WithContent($"List Complete.")
+                );
+            }
+            catch (Exception ex)
+            {
+                await Task.WhenAll(
+                    logger.LogError("Error during Server View Command.", ctx, ex),
+                    ctx.RespondAsync(new DiscordInteractionResponseBuilder().WithContent("An error occured during the viewing of server information.").AsEphemeral()).AsTask()
+                );
             }
         }
     }

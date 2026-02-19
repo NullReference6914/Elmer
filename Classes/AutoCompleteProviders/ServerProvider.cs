@@ -10,7 +10,7 @@ namespace ElmerBot.Classes.AutoCompleteProviders
         public ValueTask<IEnumerable<DiscordAutoCompleteChoice>> AutoCompleteAsync(AutoCompleteContext context)
         {
             IEnumerable<DiscordAutoCompleteChoice> options = context.Client.GetGuildsAsync()
-                .Where(g => g.Name.Contains(context.UserInput!, StringComparison.OrdinalIgnoreCase))
+                .Where(g => g.Name.Contains(context.UserInput!, StringComparison.InvariantCultureIgnoreCase))
                 .Select(g => new DiscordAutoCompleteChoice(g.Name + "(ID: " + g.Id + ")", g.Id.ToString()))
                 .ToListAsync().Result;
 

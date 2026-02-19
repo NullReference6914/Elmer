@@ -25,7 +25,7 @@ namespace ElmerBot
                 .WriteTo.Logger(lc =>
                     lc.Filter.ByIncludingOnly(e => e.Level == LogEventLevel.Error)
                         .WriteTo.Async(a =>
-                            a.File("Logs\\Errors\\DTCError-.txt",
+                            a.File("Logs\\Error-.txt",
                                 rollingInterval: RollingInterval.Day,
                                 retainedFileCountLimit: 30,
                                 outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Level}] {Message:lj}{NewLine}{Exception}"
